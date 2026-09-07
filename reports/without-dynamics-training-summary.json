@@ -1,0 +1,22 @@
+{
+  "seconds": 6.039541542006191,
+  "config": {
+    "epochs": 10,
+    "batch_size": 32,
+    "learning_rate": 0.0001,
+    "bandwidth_learning_rate": 0.001,
+    "weight_decay": 0.01,
+    "seed": 42,
+    "device": "cpu"
+  },
+  "runtime": {
+    "python": "3.12.4",
+    "platform": "macOS-26.6.2-arm64-arm-64bit",
+    "torch": "2.14.0",
+    "numpy": "2.5.3"
+  },
+  "trainable_parameters": 638466,
+  "total_parameters": 1077636,
+  "best_validation_loss": 0.10467816889286041,
+  "dynamics_weight": 0.0
+}
