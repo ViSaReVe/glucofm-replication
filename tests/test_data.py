@@ -6,7 +6,9 @@ import pytest
 import torch
 
 from glucofm.augment import augment, compression_profile
-from glucofm.data import WindowSet, align_window, assert_subject_disjoint, from_csv, synthetic_windows
+from glucofm.data import (
+    STRIDE_STEPS, WindowSet, align_window, assert_subject_disjoint, from_csv, synthetic_windows,
+)
 from glucofm.evaluate import probe, subject_splits, summary_features
 
 
@@ -112,3 +114,49 @@ def test_compression_envelope_is_a_symmetric_v_anchored_at_one():
     torch.testing.assert_close(profile, profile.flip(0))
     assert profile[0] == profile[-1] == 1.0
     assert profile.argmin().item() in (3, 4)
+
+
+def write_trace(path, days, start=datetime(2026, 1, 1, 6, 30)):
+    with path.open("w", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(["subject_id", "timestamp", "glucose_mg_dl", "label"])
+        for minute in range(0, 1440 * days, 5):
+            writer.writerow(["cohort-person-1", (start + timedelta(minutes=minute)).isoformat(),
+                             100 + minute % 37, 0])
+    return path
+
+
+def test_pretraining_sampling_covers_more_than_one_circadian_phase(tmp_path):
+    # A 24-hour stride makes every window in a segment inherit the segment's own
+    # clock index, so a 14-day trace from 06:30 would otherwise be 14 copies of 78.
+    path = write_trace(tmp_path / "fortnight.csv", 14)
+    fixed = from_csv(path, sampling="non_overlapping")
+    assert len(set(fixed.start.tolist())) == 1
+    sampled = from_csv(path, sampling="pretraining", seed=0)
+    assert len(set(sampled.start.tolist())) > 1
+
+
+def test_pretraining_windows_overlap_within_the_documented_stride_range(tmp_path):
+    path = write_trace(tmp_path / "fortnight.csv", 14)
+    sampled = from_csv(path, sampling="pretraining", seed=3)
+    # One subject, one gapless segment: consecutive starts differ by the sampled stride.
+    steps = np.diff(sampled.start.astype(int)) % 288
+    assert len(sampled) > 14  # overlap yields more windows than disjoint tiling
+    assert steps.min() >= STRIDE_STEPS[0] and steps.max() <= STRIDE_STEPS[1]
+
+
+def test_pretraining_sampling_is_seeded_and_reproducible(tmp_path):
+    path = write_trace(tmp_path / "fortnight.csv", 14)
+    first = from_csv(path, sampling="pretraining", seed=7)
+    again = from_csv(path, sampling="pretraining", seed=7)
+    other = from_csv(path, sampling="pretraining", seed=8)
+    np.testing.assert_equal(first.start, again.start)
+    np.testing.assert_equal(first.glucose, again.glucose)
+    assert first.start.tolist() != other.start.tolist()
+    assert "pretraining sampling, seed=7" in first.source
+
+
+def test_unknown_sampling_mode_is_rejected(tmp_path):
+    path = write_trace(tmp_path / "day.csv", 2)
+    with pytest.raises(ValueError, match="sampling must be"):
+        from_csv(path, sampling="overlapping")

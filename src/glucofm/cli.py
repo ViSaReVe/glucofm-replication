@@ -22,10 +22,17 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Unofficial GlucoFM v1 implementation")
     parser.add_argument("--threads", type=int, default=2, help="CPU intra-op threads")
     sub = parser.add_subparsers(dest="command", required=True)
-    prepare = sub.add_parser("prepare", help="Canonical CSV -> non-overlapping 24-hour windows")
+    prepare = sub.add_parser("prepare", help="Canonical CSV -> 24-hour windows")
     prepare.add_argument("--csv", required=True)
     prepare.add_argument("--output", required=True)
     prepare.add_argument("--binning", choices=["floor", "nearest"], default="floor")
+    prepare.add_argument("--sampling", choices=["non-overlapping", "pretraining"],
+                         default="non-overlapping",
+                         help="non-overlapping: disjoint days, one clock phase per segment "
+                              "(required for validation and downstream partitions). "
+                              "pretraining: Appendix A.2 overlapping random windows.")
+    prepare.add_argument("--sampling-seed", type=int, default=0,
+                         help="Seed for pretraining window sampling")
     train = sub.add_parser("pretrain", help="Pretrain on subject-disjoint NPZ partitions")
     train.add_argument("--train", required=True)
     train.add_argument("--validation", required=True)
@@ -52,9 +59,12 @@ def main(argv=None):
         parser.error("--threads must be positive")
     torch.set_num_threads(args.threads)
     if args.command == "prepare":
-        dataset = from_csv(args.csv, args.binning)
+        # The sampling mode is always stated here; it is not left to a default.
+        sampling = args.sampling.replace("-", "_")
+        dataset = from_csv(args.csv, args.binning, sampling=sampling, seed=args.sampling_seed)
         dataset.save(args.output)
-        print(f"Saved {len(dataset)} windows from {len(np.unique(dataset.subjects))} subjects")
+        print(f"Saved {len(dataset)} windows from {len(np.unique(dataset.subjects))} subjects "
+              f"using {sampling} sampling")
     elif args.command == "pretrain":
         config = TrainConfig(epochs=args.epochs, batch_size=args.batch_size, seed=args.seed, device=args.device)
         fit(WindowSet.load(args.train), WindowSet.load(args.validation), args.output, config)

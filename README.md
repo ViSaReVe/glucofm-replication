@@ -62,12 +62,15 @@ cohortA-person001,2026-01-01T06:30:00,104,0
 cohortA-person001,2026-01-01T06:35:00,108,0
 ```
 
-The two-row example illustrates the schema; a real import needs at least a complete day. Missing readings may be absent or blank. The importer averages duplicate time bins, keeps an observation mask, splits at gaps longer than one hour, and extracts non-overlapping days.
+The two-row example illustrates the schema; a real import needs at least a complete day. Missing readings may be absent or blank. The importer averages duplicate time bins, keeps an observation mask, and splits at gaps longer than one hour.
+
+`--sampling` chooses how windows are cut from each segment and is always stated explicitly. `non-overlapping` (the default) tiles disjoint days; because that stride is exactly 24 hours, every window in a segment also inherits the segment's start clock index. `pretraining` follows Appendix A.2 instead, advancing by a seeded random stride so windows overlap by 20-80% of a day and cover mixed circadian phases. Use it only for the pretraining partition — validation and downstream partitions must stay non-overlapping so that near-duplicate days cannot straddle a fold.
 
 ```bash
-glucofm prepare --csv pretrain.csv --output pretrain.npz
-glucofm prepare --csv validation.csv --output validation.npz
-glucofm prepare --csv downstream.csv --output downstream.npz
+glucofm prepare --csv pretrain.csv --output pretrain.npz \
+  --sampling pretraining --sampling-seed 0
+glucofm prepare --csv validation.csv --output validation.npz --sampling non-overlapping
+glucofm prepare --csv downstream.csv --output downstream.npz --sampling non-overlapping
 
 glucofm pretrain --train pretrain.npz --validation validation.npz \
   --epochs 120 --batch-size 128 --output runs/real-data
