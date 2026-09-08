@@ -1,8 +1,10 @@
 """Commands for CSV preparation, training, probing, and a complete toy demo."""
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
+import subprocess
 
 import numpy as np
 import torch
@@ -11,9 +13,26 @@ from .data import (
     WindowSet, assert_subject_disjoint, from_csv, split_subjects, synthetic_windows,
 )
 from .datasets import cgmacros, shanghai
-from .evaluate import embeddings, probe, summary_features
+from .evaluate import aggregate_probes, embeddings, probe, summary_features
 from .model import GlucoFMEncoder
-from .train import TrainConfig, fit, load_pretrainer, seed_all
+from .train import TrainConfig, fit, load_pretrainer, package_versions, runtime_info, seed_all
+
+
+def _sha256(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as stream:
+        for block in iter(lambda: stream.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _git_commit():
+    """Records which revision produced a result; None outside a checkout."""
+    try:
+        return subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True,
+                              text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
 
 
 def save_report(report, output):
@@ -81,6 +100,13 @@ def main(argv=None):
     evaluate.add_argument("--output", default="probe.json")
     evaluate.add_argument("--folds", type=int, default=5)
     evaluate.add_argument("--repeats", type=int, default=10)
+    summarise = sub.add_parser(
+        "aggregate", help="Pool probe reports named '<group>.seed<N>.json'")
+    summarise.add_argument("--probes", required=True, help="Directory of probe reports")
+    summarise.add_argument("--output", required=True)
+    summarise.add_argument("--baseline", default="pretrained_encoder")
+    summarise.add_argument("--provenance", nargs="*", default=(),
+                           help="Files to hash into the report for provenance")
     demo = sub.add_parser("demo", help="Synthetic smoke experiment, not a clinical reproduction")
     demo.add_argument("--output", default="runs/synthetic-demo")
     demo.add_argument("--epochs", type=int, default=10)
@@ -138,6 +164,19 @@ def main(argv=None):
     elif args.command == "pretrain":
         config = TrainConfig(epochs=args.epochs, batch_size=args.batch_size, seed=args.seed, device=args.device)
         fit(WindowSet.load(args.train), WindowSet.load(args.validation), args.output, config)
+    elif args.command == "aggregate":
+        report = aggregate_probes(args.probes, args.baseline)
+        report["provenance"] = {
+            "inputs": {str(path): _sha256(path) for path in sorted(args.provenance)},
+            "environment": runtime_info(), "packages": package_versions(),
+            "commit": _git_commit(),
+        }
+        Path(args.output).write_text(json.dumps(report, indent=2) + "\n")
+        for name, value in report["overall"].items():
+            print(f"{report['baseline']} {name}: {100*value['mean_ap_gap']:+.2f} AP "
+                  f"(sd over groups {100*value['std_over_groups']:.2f}); higher on "
+                  f"{value['groups_where_baseline_higher']}/{value['groups']} groups")
+        print(f"Wrote {args.output}")
     elif args.command == "probe":
         model, checkpoint = load_pretrainer(args.checkpoint)
         data = WindowSet.load(args.data)

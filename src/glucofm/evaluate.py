@@ -1,5 +1,9 @@
 """Frozen binary linear probing with identical repeated subject-grouped splits."""
 
+import json
+from pathlib import Path
+import re
+
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
@@ -79,3 +83,85 @@ def probe(feature_sets: dict[str, np.ndarray], data: WindowSet, folds=5, repeats
             "metric_note": "Average precision (AP), not trapezoidal PR-AUC. Mean/std across repeated folds; not confidence intervals.",
             "evaluation_unit": "held-out daily windows; subjects never cross train/test folds",
             "folds": folds, "repeats": repeats, "seed": seed, "source": data.source}
+
+
+PROBE_FILE_PATTERN = re.compile(r"^(?P<group>.+)\.seed(?P<seed>\d+)\.json$")
+
+
+def _fold_values(report, model, metric):
+    """Metric per (repeat, fold), keyed so models pair on identical folds."""
+    return {(row["repeat"], row["fold"]): row[metric]
+            for row in report["fold_results"] if row["model"] == model}
+
+
+def aggregate_probes(directory, baseline="pretrained_encoder"):
+    """Pool probe reports written as `<group>.seed<N>.json` into one summary.
+
+    Each group is one evaluation partition (a sensor/task pair); each seed is one
+    pretraining run. Metrics are averaged over folds within a seed and then over
+    seeds, and every control is differenced against `baseline` on identical folds.
+    The spread reported is across seeds, never across folds: repeated folds over one
+    small subject pool are dependent, so a fold-level interval would be far too
+    narrow to mean anything.
+    """
+    directory = Path(directory)
+    reports = {}
+    for path in sorted(directory.glob("*.json")):
+        match = PROBE_FILE_PATTERN.match(path.name)
+        if match:
+            reports[(match["group"], int(match["seed"]))] = json.loads(path.read_text())
+    if not reports:
+        raise ValueError(f"No probe reports named '<group>.seed<N>.json' in {directory}")
+    groups = sorted({group for group, _ in reports})
+    seeds = sorted({seed for _, seed in reports})
+    missing = [(g, s) for g in groups for s in seeds if (g, s) not in reports]
+    if missing:
+        raise ValueError(f"Incomplete grid; missing {missing[:5]}")
+    models = sorted({row["model"] for report in reports.values()
+                     for row in report["fold_results"]})
+    if baseline not in models:
+        raise ValueError(f"Baseline {baseline!r} is absent; found {models}")
+    metrics = ("average_precision", "roc_auc", "macro_f1")
+
+    pooled, per_seed, paired = {}, {}, {}
+    for group in groups:
+        for model in models:
+            values = {metric: [float(np.mean(list(_fold_values(reports[(group, seed)],
+                                                               model, metric).values())))
+                               for seed in seeds] for metric in metrics}
+            per_seed[f"{group}/{model}"] = values
+            pooled[f"{group}/{model}"] = {
+                metric: {"mean": float(np.mean(v)),
+                         "std_over_seeds": float(np.std(v, ddof=1)) if len(v) > 1 else 0.0}
+                for metric, v in values.items()}
+        for model in models:
+            if model == baseline:
+                continue
+            gaps = []
+            for seed in seeds:
+                report = reports[(group, seed)]
+                a = _fold_values(report, baseline, "average_precision")
+                b = _fold_values(report, model, "average_precision")
+                if a.keys() != b.keys():
+                    raise ValueError(f"{group} seed {seed}: {model} and {baseline} "
+                                     "were not evaluated on identical folds")
+                gaps.append(float(np.mean([a[k] - b[k] for k in sorted(a)])))
+            paired[f"{group}/vs_{model}"] = {
+                "per_seed": gaps, "mean": float(np.mean(gaps)),
+                "std_over_seeds": float(np.std(gaps, ddof=1)) if len(gaps) > 1 else 0.0}
+
+    overall = {}
+    for model in models:
+        if model == baseline:
+            continue
+        every = [paired[f"{group}/vs_{model}"]["mean"] for group in groups]
+        overall[f"vs_{model}"] = {
+            "mean_ap_gap": float(np.mean(every)),
+            "std_over_groups": float(np.std(every, ddof=1)) if len(every) > 1 else 0.0,
+            "groups_where_baseline_higher": int(sum(gap > 0 for gap in every)),
+            "groups": len(every)}
+    return {"groups": groups, "seeds": seeds, "models": models, "baseline": baseline,
+            "pooled": pooled, "per_seed": per_seed, "paired_ap_gap": paired,
+            "overall": overall,
+            "note": "Spread is across pretraining seeds. Repeated folds over one "
+                    "subject pool are dependent; no confidence intervals are implied."}

@@ -320,7 +320,14 @@ glucofm probe --checkpoint runs/seed42/last.pt --data cgm-dexcom-diabetes.npz \
 ```
 
 Repeat the last two lines for seeds 43 and 44 and for each of the eight
-sensor/label partitions.
+sensor/label partitions. `experiments/real_data.sh` drives all of it, including
+aggregation and a provenance record; run it with `LEGACY_VALIDATION=1` to reproduce
+this run's partitioning, since its default corrects the overlapping-validation
+deviation described under *Limitations*. Pretraining is stochastic across BLAS
+versions and thread counts, so expect close rather than identical numbers.
+
+The CGMacros mask policy in force for this run was `slope-change`
+(`--recovery slope-change`, the default).
 
 Machine-readable evidence is in `real-data/`: `probe-aggregate.json` (all pooled and
 paired numbers above), `pretraining-runs.json` (per-epoch history and summary for the

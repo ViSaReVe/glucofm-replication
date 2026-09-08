@@ -1,6 +1,7 @@
 import json
 
 import numpy as np
+import pytest
 import torch
 
 from glucofm.data import synthetic_windows
@@ -65,3 +66,53 @@ def test_effective_rank_counts_spread_directions():
     # A spectrum concentrated on one direction scores near one even in many dimensions.
     skewed = torch.randn(64, 16) * torch.tensor([1e4] + [1e-4] * 15)
     assert effective_rank(skewed) < 1.01
+
+
+def write_probe(path, values):
+    """A probe report shaped like evaluate.probe's, with fixed per-fold values."""
+    rows = []
+    for model, per_fold in values.items():
+        for index, value in enumerate(per_fold):
+            rows.append({"model": model, "repeat": index // 2, "fold": index % 2,
+                         "average_precision": value, "roc_auc": value,
+                         "macro_f1": value, "test_windows": 10})
+    path.write_text(json.dumps({"fold_results": rows, "summary": {}}))
+
+
+def test_aggregate_pools_over_seeds_and_pairs_on_identical_folds(tmp_path):
+    from glucofm.evaluate import aggregate_probes
+    for seed, offset in ((1, 0.0), (2, 0.10)):
+        write_probe(tmp_path / f"taskA.seed{seed}.json",
+                    {"pretrained_encoder": [0.60 + offset, 0.80 + offset],
+                     "random_encoder": [0.50 + offset, 0.70 + offset]})
+    report = aggregate_probes(tmp_path)
+    assert report["groups"] == ["taskA"] and report["seeds"] == [1, 2]
+    pooled = report["pooled"]["taskA/pretrained_encoder"]["average_precision"]
+    assert pooled["mean"] == pytest.approx(0.75)          # (0.70 + 0.80) / 2
+    gap = report["paired_ap_gap"]["taskA/vs_random_encoder"]
+    assert gap["per_seed"] == pytest.approx([0.10, 0.10])
+    assert gap["std_over_seeds"] == pytest.approx(0.0)
+    assert report["overall"]["vs_random_encoder"]["groups_where_baseline_higher"] == 1
+
+
+def test_aggregate_rejects_an_incomplete_seed_grid(tmp_path):
+    from glucofm.evaluate import aggregate_probes
+    write_probe(tmp_path / "taskA.seed1.json", {"pretrained_encoder": [0.6],
+                                                "random_encoder": [0.5]})
+    write_probe(tmp_path / "taskB.seed1.json", {"pretrained_encoder": [0.6],
+                                                "random_encoder": [0.5]})
+    write_probe(tmp_path / "taskA.seed2.json", {"pretrained_encoder": [0.6],
+                                                "random_encoder": [0.5]})
+    with pytest.raises(ValueError, match="Incomplete grid"):
+        aggregate_probes(tmp_path)
+
+
+def test_aggregate_refuses_to_pair_across_mismatched_folds(tmp_path):
+    from glucofm.evaluate import aggregate_probes
+    rows = [{"model": "pretrained_encoder", "repeat": 0, "fold": 0,
+             "average_precision": 0.6, "roc_auc": 0.6, "macro_f1": 0.6},
+            {"model": "random_encoder", "repeat": 0, "fold": 1,
+             "average_precision": 0.5, "roc_auc": 0.5, "macro_f1": 0.5}]
+    (tmp_path / "taskA.seed1.json").write_text(json.dumps({"fold_results": rows}))
+    with pytest.raises(ValueError, match="identical folds"):
+        aggregate_probes(tmp_path)
