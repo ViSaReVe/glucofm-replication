@@ -1,7 +1,6 @@
 """Small reproducible training loop. Clinical labels are never read during fit."""
 
 from dataclasses import asdict, dataclass
-import importlib
 import json
 from pathlib import Path
 import platform
@@ -79,19 +78,13 @@ def effective_rank(features: torch.Tensor) -> float:
 
 
 def runtime_info():
+    """Kept for the checkpoint/summary field of the same name in archived runs.
+
+    Richer, stage-tagged provenance lives in `glucofm.provenance`.
+    """
     return {"python": platform.python_version(), "platform": platform.platform(),
             "torch": str(torch.__version__), "numpy": str(np.__version__)}
 
-
-def package_versions():
-    """Versions of everything that can move a number, for the provenance record."""
-    versions = {}
-    for module in ("torch", "numpy", "sklearn", "scipy", "pandas", "openpyxl", "xlrd"):
-        try:
-            versions[module] = str(importlib.import_module(module).__version__)
-        except Exception:
-            versions[module] = None
-    return versions
 
 
 def fit(train_data: WindowSet, validation_data: WindowSet, output,
