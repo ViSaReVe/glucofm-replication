@@ -54,12 +54,12 @@ Runtime: Python 3.12.4, PyTorch 2.14.0, NumPy 2.5.3, macOS 26.6.2 on arm64. Exac
 
 ## Verification
 
-All **25 tests passed** on CPU at the time of this run; the suite has since grown to 39. Tests exercise mask and hidden-input isolation, causal filtering with fixed normalized input, rate-of-change gaps, weighted targets, gradients through both streams and fusion, EMA freezing/update behavior, subject separation, and a train/save/reload/feature-extraction round trip.
+All **25 tests passed** on CPU at the time of this run. Tests exercised mask and hidden-input isolation, causal filtering with fixed normalized input, rate-of-change gaps, weighted targets, gradients through both streams and fusion, EMA freezing/update behavior, subject separation, and a train/save/reload/feature-extraction round trip. The current suite and CI status are available from the [README](../README.md).
 
-The standalone `glucofm probe` command also loaded the saved best checkpoint and reproduced the demo's three non-ablation metric summaries exactly. Python compilation and command help were checked. The included GitHub Actions workflow has not run on GitHub yet.
+The standalone `glucofm probe` command also loaded the saved best checkpoint and reproduced the demo's three non-ablation metric summaries exactly. Python compilation and command help were checked. GitHub Actions had not run at the time of this historical experiment; current runs are listed in [Actions](https://github.com/ViSaReVe/glucofm-replication/actions/workflows/tests.yml).
 
 Machine-readable evidence is in `synthetic-evaluation.json`, `full-history.json`, `without-dynamics-history.json`, and the two training summary files. Subject IDs in these artifacts refer only to generated subjects. Model checkpoints remain in the local ignored `runs/synthetic-demo/` directory and are not included in the Git snapshot.
 
-## Next scientific milestone
+## Subsequent real-data evaluation
 
-Choose an accessible real CGM cohort, establish its units, timestamps, subject IDs and label definitions, and repeat the subject-disjoint comparison. Report dataset provenance, actual pretraining coverage, baselines, variability and deviations from the original paper. A useful public article can explain the implementation now; claims about clinical performance must wait for that evidence.
+The subsequent [ShanghaiT2DM-to-CGMacros experiment](real-data.md) completed a subject-disjoint evaluation on public CGM recordings. That report contains the real-data results, dataset provenance, baselines, variability, and protocol limitations. This page preserves the earlier synthetic experiment.

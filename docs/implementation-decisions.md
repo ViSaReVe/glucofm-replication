@@ -48,8 +48,8 @@ Reference: [GlucoFM v1](https://arxiv.org/abs/2605.30865v1), particularly Figure
 ## Deliberate scope differences
 
 - The importer requires segment coverage through the last 15 minutes of a day; this boundary convention is explicit in the importer. Overlapping pretraining sampling is now implemented as an opt-in mode (assumption 11); non-overlapping tiling remains the default and the only mode used for validation and downstream partitions.
-- Dataset adapters, original cohort preprocessing/labels, the private Wear-CGM corpus, and original split manifests are not available in this repository.
-- No clinical experiment has been reproduced. Synthetic classes are generated regimes and are not diabetes labels.
+- Public-data adapters for ShanghaiT2DM and CGMacros are implemented and documented in [datasets.md](datasets.md). The authors' original preprocessing code, complete label construction, private Wear-CGM corpus, and split manifests are not included.
+- A real-data evaluation is recorded in [the experiment report](../reports/real-data.md); it does not reproduce the paper's benchmark. Synthetic classes in the earlier demonstration are generated regimes, not diabetes labels.
 - The first probe is binary. Multiclass glucotypes, cross-cohort label harmonization, few-shot protocols and multiday aggregation are not implemented here.
 - V2's context-conditioned post-meal prediction experiments are outside the v1 reference scope.
 - Checkpoints support evaluation/reload; the CLI does not yet support exact interrupted-run continuation including all RNG states.

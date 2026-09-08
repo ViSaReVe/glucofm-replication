@@ -14,8 +14,7 @@ clinical setting and sensor sampling rate relative to the paper, all at once. It
 therefore cannot attribute the outcome to any one of them. "Not enough data" is a
 *hypothesis* consistent with the result, not an explanation this experiment
 establishes; a controlled data-size sweep holding population and evaluation fixed
-would be needed to test it. Earlier drafts of this report called the weak gain an
-expected consequence of data scale. That was an overclaim and is withdrawn.
+would be needed to test it.
 
 ## Result
 
@@ -25,8 +24,7 @@ sensor/task pairs, higher on 6 of 8**. Most per-task differences are within the
 spread across pretraining seeds. On this corpus, at this scale, **pretraining does
 not establish an advantage over the random-encoder control.**
 
-That is the finding, and it is a legitimate one. It is a measurement of this
-reimplementation, on this corpus, under this protocol. It is not evidence that the
+This measures the reimplementation on this corpus under this protocol. It is not evidence that the
 method fails: a different implementation, corpus or training procedure could give a
 different answer, and this run does not test any of them. Nor is it evidence that
 more data would fix it — see *What it does not isolate* above.
@@ -157,7 +155,7 @@ repository code and retrained no model.
 
 The paper pretrains on 477 dataset-defined subjects and 109,066 hours across five
 cohorts (arXiv:2605.30865v1, Table 2; identical in v2). Wear-CGM, 192 subjects and
-75,330 hours of it, is private and will not become available.
+75,330 hours of it, is private and is not included in this repository.
 
 | Measure | This run | Paper | Share |
 |---|---:|---:|---:|
@@ -165,8 +163,7 @@ cohorts (arXiv:2605.30865v1, Table 2; identical in v2). Wear-CGM, 192 subjects a
 | Recording hours | 23,356 | 109,066 | 21.4% |
 | CGM readings | 93,500 | ~1,209,480 | 7.7% |
 
-Readings is the least flattering framing and worth stating: ShanghaiT2DM samples every
-15 minutes, so a fifth of the paper's *hours* is under a tenth of its *readings*.
+ShanghaiT2DM samples every 15 minutes, so a fifth of the paper's *hours* is under a tenth of its *readings*.
 Corpus composition differs more than size does. The paper mixes five cohorts spanning
 two sampling rates and several populations; this run has one cohort, one rate, one
 country, one clinical setting.
