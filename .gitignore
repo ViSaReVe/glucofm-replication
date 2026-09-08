@@ -9,3 +9,33 @@ data/
 *.pt
 *.npz
 *.pdf
+
+# Local credentials and machine-specific configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local assistant context, conversation exports, and scratch work
+/CLAUDE.md
+/CLAUDE.local.md
+/AGENTS.md
+/AGENTS.local.md
+/.claude/
+/.codex/
+/attachments/
+/conversations/
+/pasted-text*.txt
+/scratch/
+/scratchpad/
+/work/
+/outputs/
+
+# Build and editor artifacts
+/build/
+/dist/
+.coverage
+htmlcov/
+.idea/
+.vscode/

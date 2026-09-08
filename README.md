@@ -1,10 +1,15 @@
 # GlucoFM: an unofficial PyTorch implementation
 
+[![Tests](https://github.com/ViSaReVe/glucofm-replication/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/ViSaReVe/glucofm-replication/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 An independent implementation of the main mechanisms in **GlucoFM: A Dual-Stream Foundation Model for Continuous Glucose Monitoring**, [arXiv:2605.30865v1](https://arxiv.org/abs/2605.30865v1).
 
 The project asks how ideas familiar from biosignal processing—windowing, decomposition, missing-data handling, and subject-separated evaluation—fit into self-supervised representation learning.
 
 **Status:** core implementation, plus a completed subject-disjoint evaluation on real public CGM data. This is not Google's code, an official checkpoint, a clinical model, or a reproduction of the reported clinical results. The paper's private Wear-CGM pretraining data are not included. V2's additional post-meal response experiments are outside this implementation's scope.
+
+[Quick start](#run-locally) · [Real-data results](reports/real-data.md) · [Dataset preparation](docs/datasets.md) · [Implementation details](docs/implementation-decisions.md)
 
 ### Headline result
 
@@ -99,7 +104,7 @@ For each downstream fold, a standardizer and L2 logistic regression are fit only
 
 Two open cohorts, both downstream cohorts in the paper itself. Neither is redistributed here; `src/glucofm/datasets/` converts each archive into the canonical CSV above, resolving units, timestamps and subject identifiers inside the adapter. Download instructions, the published-file quirks the adapters absorb, and the clinical source of every label threshold are in [docs/datasets.md](docs/datasets.md).
 
-- **CGMacros** (PhysioNet, CC BY-NC-SA 4.0, 45 subjects, ten days each). Downstream. A Dexcom G6 Pro at five minutes and a FreeStyle Libre Pro at fifteen were worn at the same time; they stay **separate partitions** and there is no merged mode. The published series are linearly interpolated onto a one-minute grid, so the adapter reconstructs the real sensor samples rather than presenting interpolation as observation. Four subject-level labels come from the bio panel.
+- **CGMacros** (PhysioNet, CC BY-NC-SA 4.0, 45 subjects, ten days each). Downstream. A Dexcom G6 Pro at five minutes and a FreeStyle Libre Pro at fifteen were worn at the same time; they stay **separate partitions** and there is no merged mode. The published series are linearly interpolated onto a one-minute grid. The adapter estimates an observation mask; the original physical mask cannot be recovered exactly. The policy and its limitations are documented in [Dataset preparation](docs/datasets.md). Four subject-level labels come from the bio panel.
 - **ShanghaiT2DM** (figshare, CC BY 4.0, 100 patients, 109 recording periods, ~28,095 hours at fifteen minutes). Pretraining, emitted unlabeled.
 
 ```bash

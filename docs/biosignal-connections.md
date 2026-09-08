@@ -21,8 +21,8 @@ Which intermediate quantities could still contain information from the hidden ho
 
 This links the signal-processing pipeline directly to the self-supervised task. Correct tensor shapes alone would not catch that information leak.
 
-## A defensible public write-up
+## Evaluating the representation
 
-A useful article can explain the question, show one worked example, connect each design choice to the paper, and publish the measured comparison—even when a simple baseline wins. Readers should be able to distinguish the research paper's results from this implementation's evidence.
+The [real-data experiment](../reports/real-data.md) compares pretrained embeddings with a random encoder of the same architecture and six glucose summaries. Using the same subject partitions and classifier for every representation helps distinguish the effect of pretraining from the features available before training.
 
-Avoid claiming an original research contribution, Google affiliation, clinical validation, or reproduced benchmark numbers without evidence. The meaningful contribution at this stage is an independently explained and tested implementation with transparent assumptions.
+The results apply to the documented cohorts and preprocessing. Testing transfer to additional populations and sensors requires separate experiments with explicit subject separation.
