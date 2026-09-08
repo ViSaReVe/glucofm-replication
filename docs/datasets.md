@@ -46,7 +46,7 @@ merged mode. Merging them would put two sampling rates, two calibrations and two
 dropout patterns into a single window, and the observation mask — which this model
 reads directly — would no longer mean one thing.
 
-### Published series are interpolated; the adapter recovers the readings
+### Published series are interpolated, and the observation mask is not recoverable
 
 Every per-subject CSV is on a **one-minute** grid with both sensors linearly
 interpolated between their real samples. Row 2 of `CGMacros-001.csv` reads
@@ -55,21 +55,54 @@ next Libre value.
 
 Ingesting that grid directly would present interpolated values as observations and
 leave the mask almost entirely true, destroying exactly the signal the encoder is
-built around. `cgmacros.sensor_readings` recovers the real samples: a reading is
-kept where the one-minute series **changes slope**, plus the first and last present
-sample of each run. Values interpolated across a sensor dropout lie on a straight
-line and are dropped.
+built around. So the adapter estimates which points are real. **It does not recover
+the physical observation mask, and no method can:** interpolation is not invertible,
+and a real reading that happens to lie on the straight line between its neighbours
+is bit-for-bit identical to an interpolated point.
 
-Verified against the sampling lattice on the published files: for CGMacros-001,
-Libre anchors fall every 15 minutes at a fixed phase, 892 recovered against 982
-lattice points, and the 90-point difference is accounted for by 89 lattice points
-that fall inside dropouts (spacings of 30, 45 and 60 minutes). The rule loses a real
-reading only when three consecutive readings are exactly collinear with a non-zero
-slope — about 0.1% of Libre readings — and it errs toward marking a point missing,
-which the model handles natively.
+What the published file *does* decide:
 
-Recovered yields: 105,895 Dexcom readings and 41,510 Libre readings, from 629,825
-and 687,360 interpolated one-minute points respectively.
+| Case | Verdict |
+|---|---|
+| The series changes slope at the point | real reading |
+| First or last present point of a run | real reading |
+| Point off the sampling lattice | interpolated |
+| On-lattice, present, collinear with its neighbours | **ambiguous** |
+
+The policies differ only in how they resolve the ambiguous case. `--recovery`
+selects one.
+
+**`slope-change` (default).** Keeps only the provably-real points. It never admits
+an interpolated value. It also discards real readings inside flat stretches, because
+a plateau produces no slope change — measured over the whole published cohort:
+
+| | on-lattice present points | dropped as plateau | dropped, collinear with slope | correctly excluded as dropout interpolation |
+|---|---:|---:|---:|---:|
+| Dexcom | 126,025 | 6,115 (4.85%) | 1,019 (0.81%) | 14,989 (11.89%) |
+| Libre | 45,894 | 1,304 (2.84%) | 304 (0.66%) | 3,139 (6.84%) |
+
+So this policy under-counts the mask by roughly 5.7% of Dexcom and 3.5% of Libre
+on-lattice readings, and it does so **preferentially where glucose is flat**. That is
+a real bias: it makes missingness mildly correlated with the signal, in a model that
+reads the mask as an input channel. An earlier version of this document claimed the
+loss was "about 0.1% of Libre readings"; that figure was wrong — it came from one
+subject and conflated the plateau and dropout cases.
+
+**`lattice`.** Keeps on-lattice present points except those strictly inside a
+*sloped* interpolated segment, recovering plateau readings. Where it admits a point
+the sensor may not have sampled, the bracketing readings were equal, so the value it
+admits is the value a real reading would have carried; the cost is an over-counted
+mask across flat dropouts rather than a wrong number. It yields 5.8% more Dexcom and
+3.1% more Libre readings than the default.
+
+**The recorded experiment used `slope-change`**, which is why it is the default:
+changing it changes the prepared datasets and would require regenerating
+[the real-data results](../reports/real-data.md). Neither policy is
+correct in the sense of recovering ground truth; the bias of each is stated above so
+that a reader can judge it. `reports/real-data.md` records the policy in force.
+
+Yields under the default: 105,895 Dexcom readings and 41,510 Libre readings, from
+629,825 and 687,360 interpolated one-minute points respectively.
 
 ### Units and timestamps
 

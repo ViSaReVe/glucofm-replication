@@ -44,6 +44,13 @@ def main(argv=None):
                          help="CGMacros only; thresholds are documented in docs/datasets.md")
     convert.add_argument("--cohort", choices=sorted(shanghai.COHORTS), default="T2DM",
                          help="Shanghai only; emitted unlabeled for pretraining")
+    convert.add_argument("--recovery", choices=list(cgmacros.RECOVERY_POLICIES),
+                         default="slope-change",
+                         help="CGMacros only; how to estimate real readings from the "
+                              "published interpolated one-minute grid. slope-change "
+                              "(the recorded experiment's policy) keeps only "
+                              "provably-real points; lattice also recovers plateaus. "
+                              "See docs/datasets.md.")
     split = sub.add_parser("split", help="Split an NPZ into subject-disjoint partitions")
     split.add_argument("--data", required=True)
     split.add_argument("--output-a", required=True)
@@ -86,9 +93,11 @@ def main(argv=None):
         if args.dataset == "cgmacros":
             if not args.sensor or not args.label:
                 parser.error("--sensor and --label are required for cgmacros")
-            path = cgmacros.to_canonical_csv(args.root, args.output, args.sensor, args.label)
+            path = cgmacros.to_canonical_csv(args.root, args.output, args.sensor,
+                                             args.label, args.recovery)
             description = cgmacros.CGMACROS_LABELS[args.label].description
-            print(f"Wrote {path} ({args.sensor} sensor); label {args.label}: {description}")
+            print(f"Wrote {path} ({args.sensor} sensor, {args.recovery} recovery); "
+                  f"label {args.label}: {description}")
         else:
             if args.sensor or args.label:
                 parser.error("--sensor/--label do not apply to shanghai; it is unlabeled")

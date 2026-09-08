@@ -209,26 +209,11 @@ def _parse_timestamp(text: str) -> datetime:
     raise ValueError(f"Unrecognized CGMacros timestamp: {text!r}")
 
 
-def sensor_readings(values: np.ndarray) -> np.ndarray:
-    """Recover real sensor readings from the published one-minute series.
+RECOVERY_POLICIES = ("slope-change", "lattice")
 
-    CGMacros ships both sensors linearly interpolated onto a one-minute grid, so
-    every minute carries a number while the sensors actually reported every five
-    (Dexcom) or fifteen (Libre) minutes. Ingesting the grid as-is would present
-    interpolated values as observations and leave the mask almost entirely true,
-    which is precisely the information the model is built to use.
 
-    A reading is recovered where the one-minute series changes slope, plus the
-    first and last present sample of each run. Points interpolated across a sensor
-    dropout lie on a straight line and are correctly excluded. The rule loses a
-    real reading only when three consecutive readings are exactly collinear with a
-    non-zero slope; measured against the sampling lattice on the published files
-    that costs about 0.1% of Libre readings, and it errs toward marking a point
-    missing, which the model handles natively.
-    """
-    values = np.asarray(values, dtype=float)
-    if values.ndim != 1:
-        raise ValueError("sensor_readings expects a one-dimensional series")
+def _slope_change_mask(values: np.ndarray) -> np.ndarray:
+    """Points that are provably real: a change of slope, or the end of a run."""
     present = np.isfinite(values)
     if len(values) < 3:
         return present
@@ -242,7 +227,78 @@ def sensor_readings(values: np.ndarray) -> np.ndarray:
     return run_endpoint | slope_change
 
 
-def _read_sensor(path: Path, column: str) -> list[tuple[datetime, float]]:
+def sensor_readings(values, minutes=None, period=None, policy="slope-change") -> np.ndarray:
+    """Estimate which points of the published one-minute series are real readings.
+
+    **This does not recover the physical observation mask, and cannot.** CGMacros
+    ships both sensors linearly interpolated onto a one-minute grid, so every minute
+    carries a number while the sensors reported every five (Dexcom) or fifteen
+    (Libre) minutes. Interpolation is not invertible: a real reading that happens to
+    fall on the straight line between its neighbours is bit-for-bit identical to an
+    interpolated point, and nothing in the file distinguishes them. What follows is
+    an estimate under a stated policy, not a reconstruction.
+
+    What *is* decidable from the published file:
+
+    - a point where the series changes slope is a real reading;
+    - the first and last present point of a run are real readings;
+    - a point off the sampling lattice is interpolated;
+    - a point on the lattice, present, and collinear with its neighbours is
+      **ambiguous** -- a plateau reading and an interpolated point look the same.
+
+    The two policies differ only in how they resolve that ambiguity.
+
+    `"slope-change"` (default) keeps only the provably-real points. It never admits
+    an interpolated value, and it discards real readings inside flat stretches:
+    measured over the published cohort it drops 4.85% of on-lattice Dexcom points
+    and 2.84% of Libre points as plateaus, plus 0.81% and 0.66% collinear with a
+    non-zero slope. This under-counts the mask, and does so preferentially where
+    glucose is flat, so missingness becomes mildly correlated with the signal.
+
+    `"lattice"` needs `minutes` (minute-of-day per row) and `period`. It keeps
+    on-lattice present points except those strictly inside a *sloped* interpolated
+    segment, recovering plateau readings. Where it admits an unsampled point the
+    bracketing readings were equal, so the value it admits is the value a real
+    reading would have carried; the cost is an over-counted mask across flat
+    dropouts rather than a wrong number.
+
+    The recorded real-data experiment used `"slope-change"`, which is why it remains
+    the default. See `docs/datasets.md`; changing it changes the prepared datasets.
+    """
+    if policy not in RECOVERY_POLICIES:
+        raise ValueError(f"Unknown recovery policy {policy!r}; choose from {RECOVERY_POLICIES}")
+    values = np.asarray(values, dtype=float)
+    if values.ndim != 1:
+        raise ValueError("sensor_readings expects a one-dimensional series")
+    anchors = _slope_change_mask(values)
+    if policy == "slope-change":
+        return anchors
+    if minutes is None or period is None:
+        raise ValueError("The 'lattice' policy needs minutes and period")
+    minutes = np.asarray(minutes)
+    if minutes.shape != values.shape:
+        raise ValueError("minutes must align with values")
+    index = np.flatnonzero(anchors)
+    if len(index) < 3:
+        return anchors
+    phase = np.bincount(minutes[index] % period).argmax()
+    on_lattice = np.isfinite(values) & (minutes % period == phase)
+    candidate = np.flatnonzero(on_lattice & ~anchors)
+    keep = anchors.copy()
+    if len(candidate):
+        previous = np.searchsorted(index, candidate) - 1
+        following = np.searchsorted(index, candidate)
+        inside = (previous >= 0) & (following < len(index))
+        # Bracketing readings equal => the segment is flat, so admitting the point
+        # cannot introduce a value the sensor did not report.
+        flat = np.isclose(values[index[previous[inside]]], values[index[following[inside]]],
+                          atol=1e-9)
+        keep[candidate[inside][flat]] = True
+    return keep
+
+
+def _read_sensor(path: Path, column: str, period: int,
+                 recovery: str = "slope-change") -> list[tuple[datetime, float]]:
     with open(path, newline="", encoding="utf-8-sig") as stream:
         reader = csv.DictReader(stream)
         fields = {name.strip(): name for name in (reader.fieldnames or []) if name}
@@ -259,11 +315,13 @@ def _read_sensor(path: Path, column: str) -> list[tuple[datetime, float]]:
                             and finite.max() <= GLUCOSE_RANGE_MG_DL[1]):
         raise ValueError(f"{path.name} {column!r} leaves the mg/dL range "
                          f"{GLUCOSE_RANGE_MG_DL}: [{finite.min()}, {finite.max()}]")
-    keep = sensor_readings(series)
+    minutes = np.array([time.hour * 60 + time.minute for time in times])
+    keep = sensor_readings(series, minutes, period, recovery)
     return [(times[i], float(series[i])) for i in np.flatnonzero(keep)]
 
 
-def to_canonical_csv(root, output, sensor: str, label: str) -> Path:
+def to_canonical_csv(root, output, sensor: str, label: str,
+                     recovery: str = "slope-change") -> Path:
     """Write one canonical CSV for a single sensor and a single binary label.
 
     Timestamps are already timezone-naive local clock time. CGMacros de-identifies
@@ -274,7 +332,9 @@ def to_canonical_csv(root, output, sensor: str, label: str) -> Path:
     """
     if sensor not in CGMACROS_SENSORS:
         raise ValueError(f"Unknown sensor {sensor!r}; choose from {sorted(CGMACROS_SENSORS)}")
-    column, _ = CGMACROS_SENSORS[sensor]
+    if recovery not in RECOVERY_POLICIES:
+        raise ValueError(f"Unknown recovery policy {recovery!r}; choose from {RECOVERY_POLICIES}")
+    column, period = CGMACROS_SENSORS[sensor]
     root = _dataset_root(root)
     labels, undecided = resolve_labels(root, label)
     if undecided:
@@ -295,7 +355,7 @@ def to_canonical_csv(root, output, sensor: str, label: str) -> Path:
             subject = subject_id(number)
             if subject not in labels:
                 continue  # rule undecidable for this subject; excluded, not negative
-            for time, value in _read_sensor(path, column):
+            for time, value in _read_sensor(path, column, period, recovery):
                 if time.utcoffset() is not None:
                     raise ValueError(f"{path.name} carries a timezone offset; expected local naive")
                 writer.writerow([subject, time.isoformat(), f"{value:g}", labels[subject]])

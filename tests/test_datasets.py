@@ -67,6 +67,62 @@ def test_sensor_readings_recovers_anchors_and_drops_interpolated_points():
     assert not kept[15]
 
 
+def interpolate(anchors, span):
+    """The published one-minute grid: linear interpolation between real readings."""
+    keys = sorted(anchors)
+    series = []
+    for minute in range(span):
+        lo = max(k for k in keys if k <= minute)
+        hi = min((k for k in keys if k >= minute), default=lo)
+        share = 0.0 if hi == lo else (minute - lo) / (hi - lo)
+        series.append(anchors[lo] + share * (anchors[hi] - anchors[lo]))
+    return np.array(series)
+
+
+def test_slope_change_policy_drops_readings_inside_a_flat_stretch():
+    # THE known bias, pinned rather than described. Five-minute readings that are
+    # all 120: the one-minute series is constant, so no interior point changes
+    # slope and the plateau's interior readings are not recovered.
+    plateau = interpolate({0: 120.0, 5: 120.0, 10: 120.0, 15: 120.0, 20: 140.0}, 21)
+    kept = cgmacros.sensor_readings(plateau)
+    # Minute 15 survives only because the plateau ends there; the readings at 5 and
+    # 10, interior to the flat stretch, are lost.
+    assert np.flatnonzero(kept).tolist() == [0, 15, 20]
+    # The lattice policy recovers them, because the bracketing readings are equal
+    # and so the admitted value is the value a real reading would have carried.
+    minutes = np.arange(21)
+    recovered = cgmacros.sensor_readings(plateau, minutes, 5, policy="lattice")
+    assert np.flatnonzero(recovered).tolist() == [0, 5, 10, 15, 20]
+
+
+def test_neither_policy_admits_a_sloped_interpolated_point():
+    # A real dropout: readings at 0 and 15 only, so minutes 5 and 10 are invented.
+    ramp = interpolate({0: 100.0, 15: 160.0, 20: 150.0}, 21)
+    minutes = np.arange(21)
+    for policy, extra in (("slope-change", {}), ("lattice", {"minutes": minutes, "period": 5})):
+        kept = cgmacros.sensor_readings(ramp, policy=policy, **extra)
+        assert not kept[5] and not kept[10], policy
+        assert kept[0] and kept[15] and kept[20], policy
+
+
+def test_recovery_of_a_collinear_reading_is_undecidable_by_construction():
+    # Three real readings exactly on a line are bit-for-bit identical to two real
+    # readings with an interpolated point between them. No policy can separate
+    # these, which is why the module claims estimation and not recovery.
+    real = interpolate({0: 100.0, 5: 110.0, 10: 120.0, 15: 118.0}, 16)
+    dropout = interpolate({0: 100.0, 10: 120.0, 15: 118.0}, 16)
+    np.testing.assert_array_equal(real, dropout)
+    assert cgmacros.sensor_readings(real)[5] == cgmacros.sensor_readings(dropout)[5]
+
+
+def test_lattice_policy_needs_its_lattice_and_rejects_unknown_policies():
+    values = interpolate({0: 100.0, 5: 110.0}, 6)
+    with pytest.raises(ValueError, match="needs minutes and period"):
+        cgmacros.sensor_readings(values, policy="lattice")
+    with pytest.raises(ValueError, match="Unknown recovery policy"):
+        cgmacros.sensor_readings(values, policy="interpolate-everything")
+
+
 def test_sensor_readings_keeps_run_endpoints_around_absent_values():
     series = np.array([100.0, 101.0, 102.0, np.nan, np.nan, 120.0, 121.0, 122.0])
     kept = cgmacros.sensor_readings(series)
