@@ -1,0 +1,908 @@
+{
+  "per_seed": {
+    "dexcom/diabetes/glucose_summaries": {
+      "average_precision": [
+        0.7480528401054296,
+        0.7480528401054296,
+        0.7480528401054296
+      ],
+      "roc_auc": [
+        0.8558696995734034,
+        0.8558696995734034,
+        0.8558696995734034
+      ],
+      "macro_f1": [
+        0.6919392063768474,
+        0.6919392063768474,
+        0.6919392063768474
+      ]
+    },
+    "dexcom/diabetes/random_encoder": {
+      "average_precision": [
+        0.716194078260162,
+        0.6962360581314855,
+        0.7408488633173929
+      ],
+      "roc_auc": [
+        0.8350073109332368,
+        0.8277630805408583,
+        0.8518174829285939
+      ],
+      "macro_f1": [
+        0.7373394320540531,
+        0.7368257468376375,
+        0.7560776363974978
+      ]
+    },
+    "dexcom/diabetes/pretrained_encoder": {
+      "average_precision": [
+        0.7535067895237743,
+        0.7162632683077459,
+        0.7478825262534435
+      ],
+      "roc_auc": [
+        0.8548093127722757,
+        0.8378433500655723,
+        0.854460875201616
+      ],
+      "macro_f1": [
+        0.7635826488631937,
+        0.7337022083689472,
+        0.7590779751553453
+      ]
+    },
+    "dexcom/insulin_resistance/glucose_summaries": {
+      "average_precision": [
+        0.9039986638167631,
+        0.9039986638167631,
+        0.9039986638167631
+      ],
+      "roc_auc": [
+        0.8178137603699231,
+        0.8178137603699231,
+        0.8178137603699231
+      ],
+      "macro_f1": [
+        0.7093624406124073,
+        0.7093624406124073,
+        0.7093624406124073
+      ]
+    },
+    "dexcom/insulin_resistance/random_encoder": {
+      "average_precision": [
+        0.9268587641684198,
+        0.9130512504085097,
+        0.9194311270396385
+      ],
+      "roc_auc": [
+        0.8613051566482045,
+        0.8369363581840813,
+        0.8543407285331998
+      ],
+      "macro_f1": [
+        0.7552540290815604,
+        0.7460934056434496,
+        0.7554959164982629
+      ]
+    },
+    "dexcom/insulin_resistance/pretrained_encoder": {
+      "average_precision": [
+        0.9285991661371673,
+        0.9209648356954283,
+        0.9271397531173768
+      ],
+      "roc_auc": [
+        0.8660561326954769,
+        0.8541863710959037,
+        0.8596319315171774
+      ],
+      "macro_f1": [
+        0.7528933911149894,
+        0.7543526851967561,
+        0.7547318822043948
+      ]
+    },
+    "dexcom/hyperlipidemia/glucose_summaries": {
+      "average_precision": [
+        0.31451151473890004,
+        0.31451151473890004,
+        0.31451151473890004
+      ],
+      "roc_auc": [
+        0.4806641520120573,
+        0.4806641520120573,
+        0.4806641520120573
+      ],
+      "macro_f1": [
+        0.43807440722100066,
+        0.43807440722100066,
+        0.43807440722100066
+      ]
+    },
+    "dexcom/hyperlipidemia/random_encoder": {
+      "average_precision": [
+        0.2783602188283551,
+        0.2781229943688861,
+        0.26518542966377145
+      ],
+      "roc_auc": [
+        0.4307731858642605,
+        0.44658073323829245,
+        0.42207944835752975
+      ],
+      "macro_f1": [
+        0.4529855595797219,
+        0.44677784905840595,
+        0.43207905185484946
+      ]
+    },
+    "dexcom/hyperlipidemia/pretrained_encoder": {
+      "average_precision": [
+        0.3053887377889733,
+        0.3161790999453981,
+        0.3313333597024903
+      ],
+      "roc_auc": [
+        0.4753535096309839,
+        0.492866095877632,
+        0.4932540337397654
+      ],
+      "macro_f1": [
+        0.4545906330758249,
+        0.4689664033656027,
+        0.486396881224086
+      ]
+    },
+    "dexcom/obesity/glucose_summaries": {
+      "average_precision": [
+        0.6044846801124991,
+        0.6044846801124991,
+        0.6044846801124991
+      ],
+      "roc_auc": [
+        0.606416679333232,
+        0.606416679333232,
+        0.606416679333232
+      ],
+      "macro_f1": [
+        0.5725609233621827,
+        0.5725609233621827,
+        0.5725609233621827
+      ]
+    },
+    "dexcom/obesity/random_encoder": {
+      "average_precision": [
+        0.7528438252765356,
+        0.7535277465372292,
+        0.7609904927728043
+      ],
+      "roc_auc": [
+        0.7733266284980832,
+        0.7697910692270017,
+        0.7790298255391734
+      ],
+      "macro_f1": [
+        0.6901081960662135,
+        0.6963892166167716,
+        0.697891203865141
+      ]
+    },
+    "dexcom/obesity/pretrained_encoder": {
+      "average_precision": [
+        0.7632115261142783,
+        0.7697769331443008,
+        0.7593362942821106
+      ],
+      "roc_auc": [
+        0.7822911621151475,
+        0.7826759892587528,
+        0.7836372464575838
+      ],
+      "macro_f1": [
+        0.7073715789104874,
+        0.6970254512737506,
+        0.7130753043864554
+      ]
+    },
+    "libre/diabetes/glucose_summaries": {
+      "average_precision": [
+        0.7774558824593352,
+        0.7774558824593352,
+        0.7774558824593352
+      ],
+      "roc_auc": [
+        0.8674859143333208,
+        0.8674859143333208,
+        0.8674859143333208
+      ],
+      "macro_f1": [
+        0.7013976445346148,
+        0.7013976445346148,
+        0.7013976445346148
+      ]
+    },
+    "libre/diabetes/random_encoder": {
+      "average_precision": [
+        0.7786832437199793,
+        0.7804305967487241,
+        0.7879717394595867
+      ],
+      "roc_auc": [
+        0.8834661459547274,
+        0.8854517152239998,
+        0.8871755766012034
+      ],
+      "macro_f1": [
+        0.7503841689326785,
+        0.7578698401719954,
+        0.7532389511391467
+      ]
+    },
+    "libre/diabetes/pretrained_encoder": {
+      "average_precision": [
+        0.7945644886973955,
+        0.7834818684780701,
+        0.766780336224558
+      ],
+      "roc_auc": [
+        0.8863052588262069,
+        0.8754806204080146,
+        0.8654188345949748
+      ],
+      "macro_f1": [
+        0.7449906895913598,
+        0.7324979900063022,
+        0.7035198631472186
+      ]
+    },
+    "libre/insulin_resistance/glucose_summaries": {
+      "average_precision": [
+        0.9211469730799676,
+        0.9211469730799676,
+        0.9211469730799676
+      ],
+      "roc_auc": [
+        0.8164912429653779,
+        0.8164912429653779,
+        0.8164912429653779
+      ],
+      "macro_f1": [
+        0.6590006793798213,
+        0.6590006793798213,
+        0.6590006793798213
+      ]
+    },
+    "libre/insulin_resistance/random_encoder": {
+      "average_precision": [
+        0.9309776642838866,
+        0.9231418693233259,
+        0.9288453485890412
+      ],
+      "roc_auc": [
+        0.8484388518915535,
+        0.8324863026921764,
+        0.8420279403497177
+      ],
+      "macro_f1": [
+        0.7147260125061173,
+        0.6945489552638968,
+        0.695128526039855
+      ]
+    },
+    "libre/insulin_resistance/pretrained_encoder": {
+      "average_precision": [
+        0.9201549725768079,
+        0.9387544058843189,
+        0.9285186273905535
+      ],
+      "roc_auc": [
+        0.8301522839030203,
+        0.8581388190530305,
+        0.8334927328102474
+      ],
+      "macro_f1": [
+        0.6854212979905401,
+        0.7211033229676456,
+        0.7025162564902426
+      ]
+    },
+    "libre/hyperlipidemia/glucose_summaries": {
+      "average_precision": [
+        0.37843218343247315,
+        0.37843218343247315,
+        0.37843218343247315
+      ],
+      "roc_auc": [
+        0.5599036170326667,
+        0.5599036170326667,
+        0.5599036170326667
+      ],
+      "macro_f1": [
+        0.4586360563199927,
+        0.4586360563199927,
+        0.4586360563199927
+      ]
+    },
+    "libre/hyperlipidemia/random_encoder": {
+      "average_precision": [
+        0.37316022753586947,
+        0.3605223159345012,
+        0.388294099725002
+      ],
+      "roc_auc": [
+        0.5563946248325264,
+        0.5414515862275323,
+        0.5719783002975088
+      ],
+      "macro_f1": [
+        0.5257872879672084,
+        0.5129180124596115,
+        0.5241451027327332
+      ]
+    },
+    "libre/hyperlipidemia/pretrained_encoder": {
+      "average_precision": [
+        0.37475068070748263,
+        0.37165962028657135,
+        0.4278036334701107
+      ],
+      "roc_auc": [
+        0.5794185327453523,
+        0.5600473591074683,
+        0.6363917051024799
+      ],
+      "macro_f1": [
+        0.5190940416616568,
+        0.5169907151941405,
+        0.5469871981601159
+      ]
+    },
+    "libre/obesity/glucose_summaries": {
+      "average_precision": [
+        0.5710088076104773,
+        0.5710088076104773,
+        0.5710088076104773
+      ],
+      "roc_auc": [
+        0.5206459375490249,
+        0.5206459375490249,
+        0.5206459375490249
+      ],
+      "macro_f1": [
+        0.5015070319507132,
+        0.5015070319507132,
+        0.5015070319507132
+      ]
+    },
+    "libre/obesity/random_encoder": {
+      "average_precision": [
+        0.6711425708502812,
+        0.6709055289670419,
+        0.6835673759880012
+      ],
+      "roc_auc": [
+        0.6256630169139047,
+        0.6260533275797517,
+        0.6335423170229941
+      ],
+      "macro_f1": [
+        0.5834297765759979,
+        0.5813111280064744,
+        0.5848371116674715
+      ]
+    },
+    "libre/obesity/pretrained_encoder": {
+      "average_precision": [
+        0.6507192998562035,
+        0.707560165820678,
+        0.6523075198491871
+      ],
+      "roc_auc": [
+        0.6186682435317487,
+        0.6583292422206628,
+        0.61953173665655
+      ],
+      "macro_f1": [
+        0.573207237334275,
+        0.6088583164119485,
+        0.5884719538661528
+      ]
+    }
+  },
+  "pooled": {
+    "dexcom/diabetes/glucose_summaries": {
+      "average_precision": {
+        "mean": 0.7480528401054296,
+        "std_over_seeds": 0.0
+      },
+      "roc_auc": {
+        "mean": 0.8558696995734034,
+        "std_over_seeds": 0.0
+      },
+      "macro_f1": {
+        "mean": 0.6919392063768474,
+        "std_over_seeds": 0.0
+      }
+    },
+    "dexcom/diabetes/random_encoder": {
+      "average_precision": {
+        "mean": 0.71775966656968,
+        "std_over_seeds": 0.02234757026401541
+      },
+      "roc_auc": {
+        "mean": 0.8381959581342296,
+        "std_over_seeds": 0.012340144723100898
+      },
+      "macro_f1": {
+        "mean": 0.7434142717630627,
+        "std_over_seeds": 0.010969802688466458
+      }
+    },
+    "dexcom/diabetes/pretrained_encoder": {
+      "average_precision": {
+        "mean": 0.7392175280283212,
+        "std_over_seeds": 0.020076892534035697
+      },
+      "roc_auc": {
+        "mean": 0.8490378460131547,
+        "std_over_seeds": 0.009696283144869988
+      },
+      "macro_f1": {
+        "mean": 0.7521209441291621,
+        "std_over_seeds": 0.016109326229144686
+      }
+    },
+    "dexcom/insulin_resistance/glucose_summaries": {
+      "average_precision": {
+        "mean": 0.9039986638167631,
+        "std_over_seeds": 0.0
+      },
+      "roc_auc": {
+        "mean": 0.8178137603699231,
+        "std_over_seeds": 0.0
+      },
+      "macro_f1": {
+        "mean": 0.7093624406124072,
+        "std_over_seeds": 1.3597399555105182e-16
+      }
+    },
+    "dexcom/insulin_resistance/random_encoder": {
+      "average_precision": {
+        "mean": 0.9197803805388561,
+        "std_over_seeds": 0.00691037933564895
+      },
+      "roc_auc": {
+        "mean": 0.8508607477884952,
+        "std_over_seeds": 0.012551584925175758
+      },
+      "macro_f1": {
+        "mean": 0.7522811170744242,
+        "std_over_seeds": 0.00536007993833587
+      }
+    },
+    "dexcom/insulin_resistance/pretrained_encoder": {
+      "average_precision": {
+        "mean": 0.9255679183166574,
+        "std_over_seeds": 0.00405262246008434
+      },
+      "roc_auc": {
+        "mean": 0.8599581451028526,
+        "std_over_seeds": 0.005941600927804305
+      },
+      "macro_f1": {
+        "mean": 0.7539926528387135,
+        "std_over_seeds": 0.0009706852453726002
+      }
+    },
+    "dexcom/hyperlipidemia/glucose_summaries": {
+      "average_precision": {
+        "mean": 0.31451151473890004,
+        "std_over_seeds": 0.0
+      },
+      "roc_auc": {
+        "mean": 0.4806641520120573,
+        "std_over_seeds": 0.0
+      },
+      "macro_f1": {
+        "mean": 0.4380744072210006,
+        "std_over_seeds": 6.798699777552591e-17
+      }
+    },
+    "dexcom/hyperlipidemia/random_encoder": {
+      "average_precision": {
+        "mean": 0.27388954762033757,
+        "std_over_seeds": 0.007538920407618379
+      },
+      "roc_auc": {
+        "mean": 0.43314445582002764,
+        "std_over_seeds": 0.012421571201116843
+      },
+      "macro_f1": {
+        "mean": 0.44394748683099244,
+        "std_over_seeds": 0.010736793239432097
+      }
+    },
+    "dexcom/hyperlipidemia/pretrained_encoder": {
+      "average_precision": {
+        "mean": 0.31763373247895393,
+        "std_over_seeds": 0.013033334892290447
+      },
+      "roc_auc": {
+        "mean": 0.4871578797494604,
+        "std_over_seeds": 0.010224724415196026
+      },
+      "macro_f1": {
+        "mean": 0.46998463922183786,
+        "std_over_seeds": 0.015927553437718615
+      }
+    },
+    "dexcom/obesity/glucose_summaries": {
+      "average_precision": {
+        "mean": 0.6044846801124991,
+        "std_over_seeds": 0.0
+      },
+      "roc_auc": {
+        "mean": 0.606416679333232,
+        "std_over_seeds": 0.0
+      },
+      "macro_f1": {
+        "mean": 0.5725609233621827,
+        "std_over_seeds": 0.0
+      }
+    },
+    "dexcom/obesity/random_encoder": {
+      "average_precision": {
+        "mean": 0.7557873548621897,
+        "std_over_seeds": 0.004519006545731401
+      },
+      "roc_auc": {
+        "mean": 0.7740491744214194,
+        "std_over_seeds": 0.0046615672265259344
+      },
+      "macro_f1": {
+        "mean": 0.694796205516042,
+        "std_over_seeds": 0.004128809256290137
+      }
+    },
+    "dexcom/obesity/pretrained_encoder": {
+      "average_precision": {
+        "mean": 0.7641082511802298,
+        "std_over_seeds": 0.005277766747934094
+      },
+      "roc_auc": {
+        "mean": 0.7828681326104947,
+        "std_over_seeds": 0.0006933073380197383
+      },
+      "macro_f1": {
+        "mean": 0.7058241115235645,
+        "std_over_seeds": 0.008136057873444763
+      }
+    },
+    "libre/diabetes/glucose_summaries": {
+      "average_precision": {
+        "mean": 0.7774558824593352,
+        "std_over_seeds": 0.0
+      },
+      "roc_auc": {
+        "mean": 0.8674859143333208,
+        "std_over_seeds": 0.0
+      },
+      "macro_f1": {
+        "mean": 0.7013976445346147,
+        "std_over_seeds": 1.3597399555105182e-16
+      }
+    },
+    "libre/diabetes/random_encoder": {
+      "average_precision": {
+        "mean": 0.7823618599760968,
+        "std_over_seeds": 0.004936230496667183
+      },
+      "roc_auc": {
+        "mean": 0.8853644792599767,
+        "std_over_seeds": 0.001856253354291405
+      },
+      "macro_f1": {
+        "mean": 0.7538309867479401,
+        "std_over_seeds": 0.0037777901076348794
+      }
+    },
+    "libre/diabetes/pretrained_encoder": {
+      "average_precision": {
+        "mean": 0.781608897800008,
+        "std_over_seeds": 0.013986450462112653
+      },
+      "roc_auc": {
+        "mean": 0.8757349046097321,
+        "std_over_seeds": 0.010445533717009497
+      },
+      "macro_f1": {
+        "mean": 0.7270028475816268,
+        "std_over_seeds": 0.021274510668652786
+      }
+    },
+    "libre/insulin_resistance/glucose_summaries": {
+      "average_precision": {
+        "mean": 0.9211469730799676,
+        "std_over_seeds": 0.0
+      },
+      "roc_auc": {
+        "mean": 0.816491242965378,
+        "std_over_seeds": 1.3597399555105182e-16
+      },
+      "macro_f1": {
+        "mean": 0.6590006793798213,
+        "std_over_seeds": 0.0
+      }
+    },
+    "libre/insulin_resistance/random_encoder": {
+      "average_precision": {
+        "mean": 0.9276549607320845,
+        "std_over_seeds": 0.004051257595300463
+      },
+      "roc_auc": {
+        "mean": 0.840984364977816,
+        "std_over_seeds": 0.008027312355780565
+      },
+      "macro_f1": {
+        "mean": 0.7014678312699564,
+        "std_over_seeds": 0.011485578036792666
+      }
+    },
+    "libre/insulin_resistance/pretrained_encoder": {
+      "average_precision": {
+        "mean": 0.9291426686172267,
+        "std_over_seeds": 0.009315406616438086
+      },
+      "roc_auc": {
+        "mean": 0.8405946119220994,
+        "std_over_seeds": 0.015285256053308636
+      },
+      "macro_f1": {
+        "mean": 0.7030136258161428,
+        "std_over_seeds": 0.017846211329059586
+      }
+    },
+    "libre/hyperlipidemia/glucose_summaries": {
+      "average_precision": {
+        "mean": 0.37843218343247315,
+        "std_over_seeds": 0.0
+      },
+      "roc_auc": {
+        "mean": 0.5599036170326667,
+        "std_over_seeds": 0.0
+      },
+      "macro_f1": {
+        "mean": 0.4586360563199927,
+        "std_over_seeds": 0.0
+      }
+    },
+    "libre/hyperlipidemia/random_encoder": {
+      "average_precision": {
+        "mean": 0.37399221439845753,
+        "std_over_seeds": 0.01390457282088236
+      },
+      "roc_auc": {
+        "mean": 0.5566081704525225,
+        "std_over_seeds": 0.015264477366631012
+      },
+      "macro_f1": {
+        "mean": 0.5209501343865178,
+        "std_over_seeds": 0.007004315103748349
+      }
+    },
+    "libre/hyperlipidemia/pretrained_encoder": {
+      "average_precision": {
+        "mean": 0.3914046448213882,
+        "std_over_seeds": 0.03156031439353546
+      },
+      "roc_auc": {
+        "mean": 0.5919525323184335,
+        "std_over_seeds": 0.03968552192330361
+      },
+      "macro_f1": {
+        "mean": 0.5276906516719712,
+        "std_over_seeds": 0.01674435801498787
+      }
+    },
+    "libre/obesity/glucose_summaries": {
+      "average_precision": {
+        "mean": 0.5710088076104773,
+        "std_over_seeds": 0.0
+      },
+      "roc_auc": {
+        "mean": 0.5206459375490249,
+        "std_over_seeds": 0.0
+      },
+      "macro_f1": {
+        "mean": 0.5015070319507132,
+        "std_over_seeds": 0.0
+      }
+    },
+    "libre/obesity/random_encoder": {
+      "average_precision": {
+        "mean": 0.6752051586017748,
+        "std_over_seeds": 0.007242862481400795
+      },
+      "roc_auc": {
+        "mean": 0.6284195538388835,
+        "std_over_seeds": 0.0044407333385745856
+      },
+      "macro_f1": {
+        "mean": 0.5831926720833146,
+        "std_over_seeds": 0.001774909603259439
+      }
+    },
+    "libre/obesity/pretrained_encoder": {
+      "average_precision": {
+        "mean": 0.670195661842023,
+        "std_over_seeds": 0.03236835227293369
+      },
+      "roc_auc": {
+        "mean": 0.6321764074696538,
+        "std_over_seeds": 0.022653133982505198
+      },
+      "macro_f1": {
+        "mean": 0.5901791692041255,
+        "std_over_seeds": 0.017886749229759143
+      }
+    }
+  },
+  "paired_gap": {
+    "dexcom/diabetes/vs_random_encoder": {
+      "per_seed": [
+        0.03731271126361235,
+        0.020027210176260288,
+        0.007033662936050753
+      ],
+      "mean": 0.02145786145864113,
+      "std_over_seeds": 0.015190137070630277
+    },
+    "dexcom/diabetes/vs_glucose_summaries": {
+      "per_seed": [
+        0.0054539494183446,
+        -0.03178957179768382,
+        -0.0001703138519861336
+      ],
+      "mean": -0.00883531207710845,
+      "std_over_seeds": 0.020076892534035724
+    },
+    "dexcom/insulin_resistance/vs_random_encoder": {
+      "per_seed": [
+        0.0017404019687473982,
+        0.00791358528691861,
+        0.007708626077738436
+      ],
+      "mean": 0.005787537777801482,
+      "std_over_seeds": 0.0035064202917010423
+    },
+    "dexcom/insulin_resistance/vs_glucose_summaries": {
+      "per_seed": [
+        0.02460050232040435,
+        0.016966171878665236,
+        0.023141089300613947
+      ],
+      "mean": 0.02156925449989451,
+      "std_over_seeds": 0.0040526224600844155
+    },
+    "dexcom/hyperlipidemia/vs_random_encoder": {
+      "per_seed": [
+        0.02702851896061822,
+        0.03805610557651204,
+        0.06614793003871874
+      ],
+      "mean": 0.043744184858616336,
+      "std_over_seeds": 0.020170467649858335
+    },
+    "dexcom/hyperlipidemia/vs_glucose_summaries": {
+      "per_seed": [
+        -0.009122776949926744,
+        0.0016675852064980767,
+        0.016821844963590182
+      ],
+      "mean": 0.003122217740053838,
+      "std_over_seeds": 0.013033334892290416
+    },
+    "dexcom/obesity/vs_random_encoder": {
+      "per_seed": [
+        0.010367700837742437,
+        0.0162491866070715,
+        -0.0016541984906937135
+      ],
+      "mean": 0.008320896318040073,
+      "std_over_seeds": 0.009125505796728524
+    },
+    "dexcom/obesity/vs_glucose_summaries": {
+      "per_seed": [
+        0.15872684600177928,
+        0.16529225303180176,
+        0.15485161416961174
+      ],
+      "mean": 0.15962357106773092,
+      "std_over_seeds": 0.005277766747933978
+    },
+    "libre/diabetes/vs_random_encoder": {
+      "per_seed": [
+        0.015881244977416206,
+        0.003051271729346142,
+        -0.021191403235028793
+      ],
+      "mean": -0.0007529621760888153,
+      "std_over_seeds": 0.018826828146992023
+    },
+    "libre/diabetes/vs_glucose_summaries": {
+      "per_seed": [
+        0.017108606238060393,
+        0.006025986018735139,
+        -0.01067554623477736
+      ],
+      "mean": 0.004153015340672724,
+      "std_over_seeds": 0.013986450462112795
+    },
+    "libre/insulin_resistance/vs_random_encoder": {
+      "per_seed": [
+        -0.010822691707078709,
+        0.015612536560992984,
+        -0.0003267211984875984
+      ],
+      "mean": 0.0014877078851422258,
+      "std_over_seeds": 0.013310688865378287
+    },
+    "libre/insulin_resistance/vs_glucose_summaries": {
+      "per_seed": [
+        -0.0009920005031596514,
+        0.017607432804351363,
+        0.007371654310586075
+      ],
+      "mean": 0.007995695537259262,
+      "std_over_seeds": 0.00931540661643808
+    },
+    "libre/hyperlipidemia/vs_random_encoder": {
+      "per_seed": [
+        0.0015904531716131065,
+        0.011137304352070157,
+        0.03950953374510863
+      ],
+      "mean": 0.01741243042293063,
+      "std_over_seeds": 0.019723008728099928
+    },
+    "libre/hyperlipidemia/vs_glucose_summaries": {
+      "per_seed": [
+        -0.003681502724990496,
+        -0.006772563145901742,
+        0.049371450037637474
+      ],
+      "mean": 0.012972461388915078,
+      "std_over_seeds": 0.03156031439353539
+    },
+    "libre/obesity/vs_random_encoder": {
+      "per_seed": [
+        -0.020423270994077557,
+        0.03665463685363582,
+        -0.03125985613881417
+      ],
+      "mean": -0.005009496759751969,
+      "std_over_seeds": 0.03648674987876358
+    },
+    "libre/obesity/vs_glucose_summaries": {
+      "per_seed": [
+        0.0797104922457262,
+        0.1365513582102007,
+        0.08129871223870991
+      ],
+      "mean": 0.09918685423154561,
+      "std_over_seeds": 0.03236835227293363
+    }
+  },
+  "overall_vs_random_encoder": {
+    "mean_ap_gap": 0.011556019973166387,
+    "std": 0.01576370910502902,
+    "tasks_where_pretraining_wins": 6,
+    "tasks": 8
+  },
+  "overall_vs_glucose_summaries": {
+    "mean_ap_gap": 0.037473469716120436,
+    "std": 0.059625181872227664,
+    "tasks_where_pretraining_wins": 7,
+    "tasks": 8
+  }
+}

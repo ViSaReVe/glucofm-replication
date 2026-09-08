@@ -1,5 +1,6 @@
 """Observed-only grid alignment, portable window files, and synthetic smoke data."""
 
+from bisect import bisect_left
 import csv
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -100,13 +101,43 @@ def assert_subject_disjoint(*datasets: WindowSet):
         seen |= subjects
 
 
-def from_csv(path, binning="floor") -> WindowSet:
-    """Prepare non-overlapping windows from canonical local-time CGM CSV.
+# Appendix A.2 pretraining sampling: consecutive window starts advance by a stride
+# drawn uniformly over whole grid steps, so successive windows overlap by 20-80%
+# of a day. Both endpoints of that overlap range map to the same stride range.
+OVERLAP_RANGE = (0.2, 0.8)
+STRIDE_STEPS = (round(STEPS * (1 - OVERLAP_RANGE[1])), round(STEPS * (1 - OVERLAP_RANGE[0])))
+
+
+def _window_at(segment, times, beginning, binning, subject):
+    """One 24-hour window starting at `beginning`; None when it holds no observation."""
+    lo = bisect_left(times, beginning)
+    hi = bisect_left(times, beginning + timedelta(hours=24))
+    day = segment[lo:hi]
+    if not day:
+        return None
+    elapsed = [(row[0] - beginning).total_seconds() / 60 for row in day]
+    start = (beginning.hour * 60 + beginning.minute) // 5
+    x, m, s = align_window(elapsed, [row[1] for row in day], start, binning)
+    return x, m, s, subject, day[0][2]
+
+
+def from_csv(path, binning="floor", *, sampling="non_overlapping", seed=0) -> WindowSet:
+    """Prepare 24-hour windows from a canonical local-time CGM CSV.
 
     Required: subject_id,timestamp,glucose_mg_dl. Optional: label (-1 if absent).
     Timestamps must be timezone-naive local ISO times. Dataset adapters must handle
     timezone/DST conventions and unit conversion explicitly before this function.
+
+    `sampling="non_overlapping"` (the default, and the only mode for anything
+    downstream) tiles each segment in disjoint 24-hour windows. Because that stride
+    is exactly one day, every window in a segment also inherits the segment's start
+    clock index. `sampling="pretraining"` instead advances by a seeded random stride
+    of 58-230 grid steps, giving the overlapping windows and mixed circadian phases
+    Appendix A.2 asks for. `seed` makes that draw reproducible for a run.
     """
+    if sampling not in {"non_overlapping", "pretraining"}:
+        raise ValueError("sampling must be 'non_overlapping' or 'pretraining'")
+    rng = np.random.default_rng(seed) if sampling == "pretraining" else None
     records = {}
     with open(path, newline="") as stream:
         reader = csv.DictReader(stream)
@@ -129,27 +160,57 @@ def from_csv(path, binning="floor") -> WindowSet:
                             if rows[i][0] - rows[i-1][0] > timedelta(hours=1)] + [len(rows)]
         for lo, hi in zip(boundaries[:-1], boundaries[1:]):
             segment = rows[lo:hi]
+            times = [row[0] for row in segment]
             beginning = segment[0][0]
-            cursor = 0
             # Require recording support through the last 15 minutes of each day.
             while segment[-1][0] >= beginning + timedelta(hours=24, minutes=-15):
-                end = beginning + timedelta(hours=24)
-                day = []
-                while cursor < len(segment) and segment[cursor][0] < end:
-                    if segment[cursor][0] >= beginning:
-                        day.append(segment[cursor])
-                    cursor += 1
-                if day:
-                    elapsed = [(row[0] - beginning).total_seconds() / 60 for row in day]
-                    start = (beginning.hour * 60 + beginning.minute) // 5
-                    x, m, s = align_window(elapsed, [row[1] for row in day], start, binning)
-                    windows.append((x, m, s, subject, day[0][2]))
-                beginning = end
+                window = _window_at(segment, times, beginning, binning, subject)
+                if window is not None:
+                    windows.append(window)
+                stride = STEPS if rng is None else int(rng.integers(*STRIDE_STEPS, endpoint=True))
+                beginning += timedelta(minutes=5 * stride)
     if not windows:
         raise ValueError("No complete 24-hour windows survived gap segmentation")
     x, m, s, subject, labels = zip(*windows)
-    return WindowSet(np.stack(x), np.stack(m), np.array(s), np.array(subject),
-                     np.array(labels), source="canonical CSV: " + Path(path).name)
+    return WindowSet(np.stack(x), np.stack(m), np.array(s), np.array(subject), np.array(labels),
+                     source=f"canonical CSV: {Path(path).name}; {sampling} sampling"
+                            + (f", seed={seed}" if rng is not None else ""))
+
+
+def split_subjects(path, output_a, output_b, fraction_b=0.2, seed=0) -> tuple[Path, Path]:
+    """Split a canonical CSV into two subject-disjoint canonical CSVs.
+
+    Partitioning by subject *before* windowing is what lets each side choose its own
+    sampling mode: overlapping windows for the pretraining side, non-overlapping for
+    a validation or downstream side. Splitting after windowing forces one mode on
+    both, which is how the recorded 2026-09-07 run ended up with overlapping
+    validation windows (see docs/implementation-decisions.md, assumption 11).
+    """
+    if not 0 < fraction_b < 1:
+        raise ValueError("fraction_b must lie strictly between 0 and 1")
+    rows = []
+    with open(path, newline="") as stream:
+        reader = csv.DictReader(stream)
+        fields = list(reader.fieldnames or [])
+        if "subject_id" not in fields:
+            raise ValueError("Canonical CSV needs a subject_id column")
+        rows = list(reader)
+    subjects = sorted({row["subject_id"] for row in rows})
+    if len(subjects) < 2:
+        raise ValueError("Need at least two subjects to split")
+    order = np.random.default_rng(seed).permutation(len(subjects))
+    count = max(1, min(len(subjects) - 1, round(fraction_b * len(subjects))))
+    chosen = {subjects[i] for i in order[:count]}
+    paths = []
+    for output, wanted in ((output_a, False), (output_b, True)):
+        output = Path(output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with open(output, "w", newline="") as stream:
+            writer = csv.DictWriter(stream, fieldnames=fields)
+            writer.writeheader()
+            writer.writerows(row for row in rows if (row["subject_id"] in chosen) == wanted)
+        paths.append(output)
+    return tuple(paths)
 
 
 def synthetic_windows(subjects=64, days=3, seed=42) -> WindowSet:

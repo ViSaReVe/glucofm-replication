@@ -87,17 +87,33 @@ class CausalGaussian(nn.Module):
 
 
 class WaveFeature(nn.Module):
-    """Within-patch convolution, activation, and observed-position pooling."""
+    """Within-patch convolution, activation, and observed-position pooling.
+
+    The convolution reads two channels, the zero-filled values and the observation
+    mask itself. With values alone the fill value is ambiguous: after
+    `normalize_visible`, 0.0 is exactly the window mean, so a gap is numerically an
+    ordinary mid-range reading and the kernel cannot tell them apart. On a constant
+    patch with one interior gap, a mean kernel's response at the two *observed*
+    neighbours falls from 1.9545 to 1.2117 (post-GELU) purely because a neighbour is
+    absent. The mask channel does not make the response invariant to missingness --
+    nothing can, since an absent input is absent -- it makes missingness identifiable,
+    so the kernel can learn what a gap does to its neighbourhood instead of reading it
+    as a measurement. Normalising by a convolution of the mask through the learned
+    kernel is not an option here and is not used: learned weights are signed, so that
+    denominator crosses zero (per-channel minima [-0.480, -0.647, -0.063, -0.288,
+    -1.172, 0.250]) and the output on a constant 2.0 input spans [-2462692, +436007].
+    """
 
     def __init__(self, width: int):
         super().__init__()
-        self.conv = nn.Conv1d(1, width, kernel_size=3, padding=1)
+        self.conv = nn.Conv1d(2, width, kernel_size=3, padding=1)
 
     def forward(self, patches: Tensor, valid: Tensor) -> Tensor:
         b, p, k = patches.shape
-        x = torch.where(valid, patches, 0.0).reshape(b * p, 1, k)
-        features = F.gelu(self.conv(x))
-        weights = valid.reshape(b * p, 1, k).to(x.dtype)
+        # `where`, not a multiply: missing entries may hold NaN placeholders.
+        values = torch.where(valid, patches, 0.0).reshape(b * p, 1, k)
+        weights = valid.reshape(b * p, 1, k).to(patches.dtype)
+        features = F.gelu(self.conv(torch.cat([values, weights], dim=1)))
         pooled = (features * weights).sum(-1) / weights.sum(-1).clamp_min(1)
         return pooled.reshape(b, p, -1)
 
@@ -213,6 +229,18 @@ def weighted_smooth_l1(predicted: Tensor, target: Tensor, weight: Tensor) -> Ten
 def transition_weights(observed: Tensor, hidden: Tensor) -> Tensor:
     density = observed.to(torch.float32).reshape(-1, PATCHES, PATCH).mean(-1)
     return (~hidden[:, :-1]).to(density.dtype) * density[:, :-1] * density[:, 1:]
+
+
+def objective_support(observed: Tensor, hidden: Tensor) -> tuple[Tensor, Tensor]:
+    """Per-window total weight behind each objective: contextual w, then transition q.
+
+    A window whose contextual weight sums to zero contributes nothing to L_MCR; one
+    whose transition weight sums to zero contributes nothing to L_TD. Both are legal
+    outcomes of hiding and sparsity, and both are silent in the loss, so training
+    reports the fractions rather than leaving them implicit.
+    """
+    density = observed.to(torch.float32).reshape(-1, PATCHES, PATCH).mean(-1)
+    return (density * hidden).sum(-1), transition_weights(observed, hidden).sum(-1)
 
 
 def sample_hidden(batch: int, device: torch.device) -> Tensor:

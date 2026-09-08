@@ -5,8 +5,11 @@ import numpy as np
 import pytest
 import torch
 
-from glucofm.augment import augment
-from glucofm.data import WindowSet, align_window, assert_subject_disjoint, from_csv, synthetic_windows
+from glucofm.augment import augment, compression_profile
+from glucofm.data import (
+    STRIDE_STEPS, WindowSet, align_window, assert_subject_disjoint, from_csv,
+    split_subjects, synthetic_windows,
+)
 from glucofm.evaluate import probe, subject_splits, summary_features
 
 
@@ -86,3 +89,117 @@ def test_probe_shares_splits_and_reports_all_metrics():
     assert result["summary"]["a"] == result["summary"]["b"]
     assert len(result["subject_splits"]) == 3
     assert set(result["summary"]["a"]) == {"average_precision", "roc_auc", "macro_f1"}
+
+
+def test_compression_reaches_its_sampled_bottom_at_every_length():
+    # linspace(-1, 1, L).abs() has no exact zero for even L, so an unrenormalised
+    # envelope stopped at 0.52 / 0.4857 / 0.4667 / 0.4545 for L = 6 / 8 / 10 / 12.
+    bottom = 0.40
+    for length in range(6, 13):
+        profile = compression_profile(length, bottom)
+        assert profile.shape == (length,)
+        assert abs(profile.min().item() - bottom) < 1e-6
+        assert abs(profile.max().item() - 1.0) < 1e-6
+
+
+def test_compression_leaves_the_already_correct_odd_lengths_unchanged():
+    # Odd lengths already contained an exact zero; the renormalisation must be a
+    # no-op there, so the fix cannot be masking a change to the correct case.
+    for length in (7, 9, 11):
+        old = 0.55 + 0.45 * torch.linspace(-1, 1, length).abs()
+        torch.testing.assert_close(compression_profile(length, 0.55), old)
+
+
+def test_compression_envelope_is_a_symmetric_v_anchored_at_one():
+    profile = compression_profile(8, 0.4)
+    torch.testing.assert_close(profile, profile.flip(0))
+    assert profile[0] == profile[-1] == 1.0
+    assert profile.argmin().item() in (3, 4)
+
+
+def write_trace(path, days, start=datetime(2026, 1, 1, 6, 30)):
+    with path.open("w", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(["subject_id", "timestamp", "glucose_mg_dl", "label"])
+        for minute in range(0, 1440 * days, 5):
+            writer.writerow(["cohort-person-1", (start + timedelta(minutes=minute)).isoformat(),
+                             100 + minute % 37, 0])
+    return path
+
+
+def test_pretraining_sampling_covers_more_than_one_circadian_phase(tmp_path):
+    # A 24-hour stride makes every window in a segment inherit the segment's own
+    # clock index, so a 14-day trace from 06:30 would otherwise be 14 copies of 78.
+    path = write_trace(tmp_path / "fortnight.csv", 14)
+    fixed = from_csv(path, sampling="non_overlapping")
+    assert len(set(fixed.start.tolist())) == 1
+    sampled = from_csv(path, sampling="pretraining", seed=0)
+    assert len(set(sampled.start.tolist())) > 1
+
+
+def test_pretraining_windows_overlap_within_the_documented_stride_range(tmp_path):
+    path = write_trace(tmp_path / "fortnight.csv", 14)
+    sampled = from_csv(path, sampling="pretraining", seed=3)
+    # One subject, one gapless segment: consecutive starts differ by the sampled stride.
+    steps = np.diff(sampled.start.astype(int)) % 288
+    assert len(sampled) > 14  # overlap yields more windows than disjoint tiling
+    assert steps.min() >= STRIDE_STEPS[0] and steps.max() <= STRIDE_STEPS[1]
+
+
+def test_pretraining_sampling_is_seeded_and_reproducible(tmp_path):
+    path = write_trace(tmp_path / "fortnight.csv", 14)
+    first = from_csv(path, sampling="pretraining", seed=7)
+    again = from_csv(path, sampling="pretraining", seed=7)
+    other = from_csv(path, sampling="pretraining", seed=8)
+    np.testing.assert_equal(first.start, again.start)
+    np.testing.assert_equal(first.glucose, again.glucose)
+    assert first.start.tolist() != other.start.tolist()
+    assert "pretraining sampling, seed=7" in first.source
+
+
+def test_unknown_sampling_mode_is_rejected(tmp_path):
+    path = write_trace(tmp_path / "day.csv", 2)
+    with pytest.raises(ValueError, match="sampling must be"):
+        from_csv(path, sampling="overlapping")
+
+
+def test_subject_partition_lets_each_side_choose_its_sampling_mode(tmp_path):
+    # Partitioning before windowing is the point: splitting an already-windowed NPZ
+    # forces one sampling mode on both sides, which is how the recorded run ended up
+    # with overlapping validation windows.
+    path = tmp_path / "cohort.csv"
+    start = datetime(2026, 1, 1, 6, 30)
+    with path.open("w", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(["subject_id", "timestamp", "glucose_mg_dl", "label"])
+        for subject in range(6):
+            for minute in range(0, 1440 * 6, 5):
+                writer.writerow([f"person-{subject}",
+                                 (start + timedelta(minutes=minute)).isoformat(), 100, -1])
+    a, b = split_subjects(path, tmp_path / "a.csv", tmp_path / "b.csv",
+                          fraction_b=0.5, seed=0)
+    train = from_csv(a, sampling="pretraining", seed=0)
+    validation = from_csv(b, sampling="non_overlapping")
+    assert_subject_disjoint(train, validation)
+    assert len(set(train.start.tolist())) > 1
+    assert len(set(validation.start.tolist())) == 1
+
+
+def test_subject_partition_is_seeded_and_keeps_every_row(tmp_path):
+    path = tmp_path / "cohort.csv"
+    start = datetime(2026, 1, 1, 0, 0)
+    with path.open("w", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(["subject_id", "timestamp", "glucose_mg_dl", "label"])
+        for subject in range(10):
+            for step in range(4):
+                writer.writerow([f"person-{subject}",
+                                 (start + timedelta(minutes=5 * step)).isoformat(), 100, -1])
+    a, b = split_subjects(path, tmp_path / "a.csv", tmp_path / "b.csv", 0.3, seed=7)
+    rows = lambda p: [r for r in open(p).read().splitlines()[1:] if r]
+    subjects = lambda p: {r.split(",")[0] for r in rows(p)}
+    assert len(rows(a)) + len(rows(b)) == 40
+    assert not subjects(a) & subjects(b)
+    assert len(subjects(b)) == 3
+    again = split_subjects(path, tmp_path / "c.csv", tmp_path / "d.csv", 0.3, seed=7)
+    assert subjects(again[1]) == subjects(b)
