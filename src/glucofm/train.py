@@ -15,6 +15,7 @@ from torch.utils.data import DataLoader
 from .augment import augment
 from .data import WindowSet, assert_subject_disjoint
 from .model import GlucoFMPretrainer, ModelConfig, objective_support
+from . import provenance
 
 
 SELECTION_RULE = "keep-last"
@@ -112,6 +113,15 @@ def fit(train_data: WindowSet, validation_data: WindowSet, output,
                         generator=torch.Generator().manual_seed(config.seed), num_workers=0)
     validation = DataLoader(validation_data, batch_size=config.batch_size, num_workers=0)
     history = []
+    training_provenance = {
+        "stage": "training", "training_seed": config.seed,
+        **provenance.environment("training"),
+        "train_data": {"source": train_data.source, "windows": len(train_data),
+                       "subjects": len(np.unique(train_data.subjects))},
+        "validation_data": {"source": validation_data.source, "windows": len(validation_data),
+                            "subjects": len(np.unique(validation_data.subjects))},
+        "dynamics_weight": dynamics_weight,
+    }
     started = time.perf_counter()
     for epoch in range(1, config.epochs + 1):
         model.train()
@@ -169,6 +179,9 @@ def fit(train_data: WindowSet, validation_data: WindowSet, output,
             "train_subjects": np.unique(train_data.subjects).tolist(),
             "validation_subjects": np.unique(validation_data.subjects).tolist(),
             "data_sources": [train_data.source, validation_data.source], "runtime": runtime_info(),
+            # Captured here, at the moment the checkpoint is written, so a later
+            # aggregation cannot be mistaken for the environment that trained it.
+            "provenance": training_provenance,
         }
         # Keep-last: `last.pt` is the selected checkpoint (see SELECTION_RULE).
         torch.save(checkpoint, output / "last.pt")
@@ -187,7 +200,7 @@ def fit(train_data: WindowSet, validation_data: WindowSet, output,
                "minimum_validation_loss_epoch": 1 + validation_losses.index(min(validation_losses)),
                "final_validation_effective_rank": history[-1]["validation_effective_rank"],
                "final_windows_missing_an_objective": history[-1]["windows_missing_an_objective"],
-               "dynamics_weight": dynamics_weight}
+               "dynamics_weight": dynamics_weight, "provenance": training_provenance}
     (output / "training-summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     return load_pretrainer(output / "last.pt", device)[0], summary
 

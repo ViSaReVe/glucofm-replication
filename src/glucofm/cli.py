@@ -1,10 +1,8 @@
 """Commands for CSV preparation, training, probing, and a complete toy demo."""
 
 import argparse
-import hashlib
 import json
 from pathlib import Path
-import subprocess
 
 import numpy as np
 import torch
@@ -15,24 +13,8 @@ from .data import (
 from .datasets import cgmacros, shanghai
 from .evaluate import aggregate_probes, embeddings, probe, summary_features
 from .model import GlucoFMEncoder
-from .train import TrainConfig, fit, load_pretrainer, package_versions, runtime_info, seed_all
-
-
-def _sha256(path):
-    digest = hashlib.sha256()
-    with open(path, "rb") as stream:
-        for block in iter(lambda: stream.read(1 << 20), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
-def _git_commit():
-    """Records which revision produced a result; None outside a checkout."""
-    try:
-        return subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True,
-                              text=True, check=True).stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
-        return None
+from . import provenance
+from .train import TrainConfig, fit, load_pretrainer, seed_all
 
 
 def save_report(report, output):
@@ -100,6 +82,11 @@ def main(argv=None):
     evaluate.add_argument("--output", default="probe.json")
     evaluate.add_argument("--folds", type=int, default=5)
     evaluate.add_argument("--repeats", type=int, default=10)
+    evaluate.add_argument("--cv-seed", type=int, default=42,
+                          help="Seed for the fold assignment. Distinct from the "
+                               "pretraining seed, which comes from the checkpoint; "
+                               "aggregation pools over training seeds and requires "
+                               "the CV seed to match.")
     summarise = sub.add_parser(
         "aggregate", help="Pool probe reports named '<group>.seed<N>.json'")
     summarise.add_argument("--probes", required=True, help="Directory of probe reports")
@@ -166,10 +153,13 @@ def main(argv=None):
         fit(WindowSet.load(args.train), WindowSet.load(args.validation), args.output, config)
     elif args.command == "aggregate":
         report = aggregate_probes(args.probes, args.baseline)
-        report["provenance"] = {
-            "inputs": {str(path): _sha256(path) for path in sorted(args.provenance)},
-            "environment": runtime_info(), "packages": package_versions(),
-            "commit": _git_commit(),
+        # Aggregation-stage only. It describes the machine that pooled the numbers,
+        # never the one that produced the checkpoints; per-report provenance travels
+        # inside `sources` and is summarised under `source_provenance`.
+        report["aggregation_provenance"] = {
+            **provenance.environment("aggregation"),
+            "declared_inputs": [provenance.file_record(path)
+                                for path in sorted(args.provenance)],
         }
         Path(args.output).write_text(json.dumps(report, indent=2) + "\n")
         for name, value in report["overall"].items():
@@ -187,9 +177,27 @@ def main(argv=None):
         random_encoder = GlucoFMEncoder(model.online.config)
         features = {"glucose_summaries": summary_features(data), "random_encoder": embeddings(random_encoder, data),
                     "pretrained_encoder": embeddings(model.online, data)}
-        report = probe(features, data, args.folds, args.repeats)
+        report = probe(features, data, args.folds, args.repeats, args.cv_seed)
         report["checkpoint_epoch"] = checkpoint["epoch"]
         report["pretraining_sources"] = checkpoint["data_sources"]
+        # The two seeds are different things and were previously conflated: the
+        # training seed identifies the pretraining run, the CV seed identifies the
+        # fold assignment. Aggregation pools over the first and requires the second
+        # to match.
+        training_seed = checkpoint["train_config"]["seed"]
+        report["training_seed"] = training_seed
+        report["cv_seed"] = args.cv_seed
+        report["provenance"] = {
+            "stage": "probe", "training_seed": training_seed, "cv_seed": args.cv_seed,
+            **provenance.environment("probe"),
+            "checkpoint": {**provenance.file_record(args.checkpoint),
+                           "epoch": checkpoint["epoch"],
+                           "selection_rule": checkpoint.get("selection_rule"),
+                           "training_provenance": checkpoint.get("provenance")},
+            "dataset": {**provenance.file_record(args.data), "source": data.source,
+                        "windows": len(data),
+                        "subjects": len(np.unique(data.subjects))},
+        }
         save_report(report, args.output)
     else:
         output = Path(args.output)
