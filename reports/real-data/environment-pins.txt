@@ -1,0 +1,10 @@
+# real-data run environment, 3.12.4 on macOS-26.6.2-arm64-arm-64bit
+torch==2.9.1
+numpy==1.26.4
+scikit-learn==1.8.0
+scipy==1.13.1
+pandas==2.2.2
+openpyxl==3.1.2
+xlrd==2.0.2
+joblib==1.4.2
+threadpoolctl==3.6.0
