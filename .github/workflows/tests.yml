@@ -9,5 +9,5 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
-      - run: python -m pip install -e . pytest
+      - run: python -m pip install -e '.[datasets]' pytest
       - run: pytest -q

@@ -1,0 +1,183 @@
+"""Cohort adapter invariants.
+
+Fixtures reproduce the published layouts in miniature -- including the quirks the
+adapters exist to absorb -- so the suite never needs the cohorts themselves.
+"""
+
+import csv
+
+import numpy as np
+import pytest
+
+from glucofm.data import from_csv
+from glucofm.datasets import cgmacros, shanghai
+
+BIO_HEADER = ["subject", "Age", "Gender", "BMI", "Body weight ", "Height ", "Self-identify ",
+              "A1c PDL (Lab)", "Fasting GLU - PDL (Lab)", "Insulin ", "Triglycerides",
+              "Cholesterol", "HDL", "Non HDL ", "LDL (Cal)", "VLDL (Cal)", "Cho/HDL Ratio"]
+
+
+def bio_row(subject, bmi=25.0, a1c=5.4, glucose=90.0, insulin="6.0",
+            triglycerides=100.0, cholesterol=180.0, ldl=100.0, vldl=15.0):
+    return [subject, 40, "F", bmi, 150.0, 65.0, "White", a1c, glucose, insulin,
+            triglycerides, cholesterol, 60.0, 120.0, ldl, vldl, 3.0]
+
+
+def write_cgmacros(root, rows, subjects=(1, 2), period=5, hours=30):
+    """A CGMacros tree: bio.csv plus per-subject one-minute interpolated series."""
+    root.mkdir(parents=True, exist_ok=True)
+    with (root / "bio.csv").open("w", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(BIO_HEADER)
+        writer.writerows(rows)
+    for number in subjects:
+        folder = root / f"CGMacros-{number:03d}"
+        folder.mkdir(exist_ok=True)
+        minutes = hours * 60
+        anchors = {t: 100.0 + 20.0 * np.sin(t / 97.0) for t in range(0, minutes, period)}
+        keys = sorted(anchors)
+        with (folder / f"CGMacros-{number:03d}.csv").open("w", newline="") as stream:
+            writer = csv.writer(stream)
+            writer.writerow(["Timestamp", "Libre GL", "Dexcom GL", "Meal Type"])
+            for minute in range(minutes):
+                lo = max(k for k in keys if k <= minute)
+                hi = min((k for k in keys if k >= minute), default=lo)
+                # Linear interpolation between anchors, exactly as published.
+                share = 0.0 if hi == lo else (minute - lo) / (hi - lo)
+                value = anchors[lo] + share * (anchors[hi] - anchors[lo])
+                stamp = (np.datetime64("2020-05-01T00:00:00") + np.timedelta64(minute, "m"))
+                writer.writerow([str(stamp), f"{value:.6f}", f"{value:.6f}", ""])
+    return root
+
+
+def test_sensor_readings_recovers_anchors_and_drops_interpolated_points():
+    # Five-minute anchors, linearly interpolated to one minute, with one dropout
+    # where the published grid still carries a value at every minute.
+    anchors = {0: 100.0, 5: 110.0, 10: 104.0, 20: 130.0, 25: 128.0}
+    keys = sorted(anchors)
+    series = []
+    for minute in range(26):
+        lo = max(k for k in keys if k <= minute)
+        hi = min(k for k in keys if k >= minute)
+        share = 0.0 if hi == lo else (minute - lo) / (hi - lo)
+        series.append(anchors[lo] + share * (anchors[hi] - anchors[lo]))
+    kept = cgmacros.sensor_readings(np.array(series))
+    assert np.flatnonzero(kept).tolist() == keys
+    # Minute 15 sits inside the 10->20 dropout and must not be called an observation.
+    assert not kept[15]
+
+
+def test_sensor_readings_keeps_run_endpoints_around_absent_values():
+    series = np.array([100.0, 101.0, 102.0, np.nan, np.nan, 120.0, 121.0, 122.0])
+    kept = cgmacros.sensor_readings(series)
+    assert kept.tolist() == [True, False, True, False, False, True, False, True]
+
+
+def test_cgmacros_emits_canonical_schema_that_the_importer_accepts(tmp_path):
+    root = write_cgmacros(tmp_path / "cgmacros",
+                          [bio_row(1, bmi=34.0), bio_row(2, bmi=22.0)])
+    path = cgmacros.to_canonical_csv(root, tmp_path / "obesity.csv", "dexcom", "obesity")
+    with open(path) as stream:
+        rows = list(csv.DictReader(stream))
+    assert set(rows[0]) == {"subject_id", "timestamp", "glucose_mg_dl", "label"}
+    labels = {row["subject_id"]: row["label"] for row in rows}
+    assert labels == {"cgmacros-001": "1", "cgmacros-002": "0"}
+    windows = from_csv(path, sampling="non_overlapping")
+    assert len(windows) >= 2 and set(np.unique(windows.labels)) == {0, 1}
+
+
+def test_cgmacros_sensors_stay_separate_partitions(tmp_path):
+    root = write_cgmacros(tmp_path / "cgmacros", [bio_row(1, bmi=34.0), bio_row(2, bmi=22.0)],
+                          period=5)
+    dexcom = cgmacros.to_canonical_csv(root, tmp_path / "d.csv", "dexcom", "obesity")
+    libre = cgmacros.to_canonical_csv(root, tmp_path / "l.csv", "libre", "obesity")
+    count = lambda p: sum(1 for _ in open(p)) - 1
+    # Same underlying five-minute fixture; the fifteen-minute sensor must not be
+    # silently reinterpreted, and there is no mode that merges the two.
+    assert count(dexcom) == count(libre)
+    assert "merge" not in cgmacros.CGMACROS_SENSORS
+
+
+def test_cgmacros_rejects_hba1c_that_is_not_ngsp_percent(tmp_path):
+    # The published data dictionary mislabels this column as mmol/mol.
+    root = write_cgmacros(tmp_path / "cgmacros", [bio_row(1, a1c=39.0), bio_row(2, a1c=48.0)])
+    with pytest.raises(ValueError, match="NGSP percent"):
+        cgmacros.subject_labels(root, "diabetes")
+
+
+def test_cgmacros_treats_documented_error_sentinels_as_missing(tmp_path):
+    root = write_cgmacros(tmp_path / "cgmacros",
+                          [bio_row(1, ldl=800.0, cholesterol=100.0, triglycerides=50.0),
+                           bio_row(2, ldl=200.0)])
+    labels = cgmacros.subject_labels(root, "hyperlipidemia")
+    # LDL 800 is documented as a calculation error; it must not read as very high LDL.
+    assert labels == {"cgmacros-001": 0, "cgmacros-002": 1}
+
+
+def test_cgmacros_label_thresholds_sit_where_the_documentation_says(tmp_path):
+    root = write_cgmacros(tmp_path / "cgmacros",
+                          [bio_row(1, bmi=30.0, a1c=6.5), bio_row(2, bmi=29.9, a1c=6.4)])
+    assert cgmacros.subject_labels(root, "obesity") == {"cgmacros-001": 1, "cgmacros-002": 0}
+    assert cgmacros.subject_labels(root, "diabetes") == {"cgmacros-001": 1, "cgmacros-002": 0}
+
+
+def test_cgmacros_parses_lab_flagged_panel_values():
+    assert cgmacros._panel_number("2.5 (low)") == 2.5
+    assert cgmacros._panel_number("46.4 (high)") == 46.4
+    assert cgmacros._panel_number("") != cgmacros._panel_number("")  # NaN
+    assert cgmacros.homa_ir({"Insulin ": 10.0, "Fasting GLU - PDL (Lab)": 81.0}) == 2.0
+
+
+def test_subject_ids_cannot_collide_between_cohorts():
+    assert cgmacros.subject_id(2) != shanghai.subject_id("T2DM", "2")
+    assert shanghai.subject_id("T1DM", "1002") != shanghai.subject_id("T2DM", "1002")
+
+
+def write_workbook(path, times, values, glucose_column="CGM (mg / dl)"):
+    pd = pytest.importorskip("pandas")
+    pytest.importorskip("openpyxl")
+    pd.DataFrame({"Date": times, glucose_column: values,
+                  "CBG (mg / dl)": [None] * len(values)}).to_excel(path, index=False)
+
+
+def shanghai_tree(tmp_path, glucose_column="CGM (mg / dl)", scale=1.0):
+    pd = pytest.importorskip("pandas")
+    folder = tmp_path / "shanghai" / "Shanghai_T2DM"
+    folder.mkdir(parents=True)
+    for patient, period in (("2000", "0"), ("2000", "1"), ("2001", "0")):
+        times = pd.date_range("2021-05-13 08:00", periods=120, freq="15min")
+        values = [(140.0 + 30.0 * np.sin(i / 9.0)) * scale for i in range(120)]
+        write_workbook(folder / f"{patient}_{period}_20210513.xlsx", times, values, glucose_column)
+    return tmp_path / "shanghai"
+
+
+def test_shanghai_emits_unlabeled_rows_and_shares_ids_across_periods(tmp_path):
+    root = shanghai_tree(tmp_path)
+    path = shanghai.to_canonical_csv(root, tmp_path / "t2dm.csv", "T2DM")
+    with open(path) as stream:
+        rows = list(csv.DictReader(stream))
+    assert {row["label"] for row in rows} == {"-1"}, "pretraining rows must stay unlabeled"
+    # Two recording periods of one patient must land under a single subject id, or
+    # subject-disjoint partitioning could be defeated by splitting one person.
+    assert {row["subject_id"] for row in rows} == {"shanghaiT2DM-2000", "shanghaiT2DM-2001"}
+
+
+def test_shanghai_reads_the_unlabeled_cgm_header_variant(tmp_path):
+    # Two of the 109 published T2DM workbooks name the column 'CGM ' with no unit.
+    root = shanghai_tree(tmp_path, glucose_column="CGM ")
+    path = shanghai.to_canonical_csv(root, tmp_path / "t2dm.csv", "T2DM")
+    assert sum(1 for _ in open(path)) - 1 == 360
+
+
+def test_shanghai_refuses_a_series_that_reads_as_mmol_per_litre(tmp_path):
+    root = shanghai_tree(tmp_path, scale=1 / 18.0)
+    with pytest.raises(ValueError, match="mmol/L"):
+        shanghai.to_canonical_csv(root, tmp_path / "t2dm.csv", "T2DM")
+
+
+def test_shanghai_windows_carry_no_label_into_pretraining(tmp_path):
+    root = shanghai_tree(tmp_path)
+    path = shanghai.to_canonical_csv(root, tmp_path / "t2dm.csv", "T2DM")
+    windows = from_csv(path, sampling="pretraining", seed=0)
+    assert (windows.labels == -1).all()
+    assert set(windows[0]) == {"glucose", "observed", "start"}

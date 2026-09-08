@@ -8,6 +8,7 @@ import numpy as np
 import torch
 
 from .data import WindowSet, assert_subject_disjoint, from_csv, synthetic_windows
+from .datasets import cgmacros, shanghai
 from .evaluate import embeddings, probe, summary_features
 from .model import GlucoFMEncoder
 from .train import TrainConfig, fit, load_pretrainer, seed_all
@@ -33,6 +34,22 @@ def main(argv=None):
                               "pretraining: Appendix A.2 overlapping random windows.")
     prepare.add_argument("--sampling-seed", type=int, default=0,
                          help="Seed for pretraining window sampling")
+    convert = sub.add_parser("convert", help="Cohort archive -> canonical CSV")
+    convert.add_argument("--dataset", required=True, choices=["cgmacros", "shanghai"])
+    convert.add_argument("--root", required=True, help="Extracted cohort directory")
+    convert.add_argument("--output", required=True)
+    convert.add_argument("--sensor", choices=sorted(cgmacros.CGMACROS_SENSORS),
+                         help="CGMacros only; the two sensors stay separate partitions")
+    convert.add_argument("--label", choices=sorted(cgmacros.CGMACROS_LABELS),
+                         help="CGMacros only; thresholds are documented in docs/datasets.md")
+    convert.add_argument("--cohort", choices=sorted(shanghai.COHORTS), default="T2DM",
+                         help="Shanghai only; emitted unlabeled for pretraining")
+    split = sub.add_parser("split", help="Split an NPZ into subject-disjoint partitions")
+    split.add_argument("--data", required=True)
+    split.add_argument("--output-a", required=True)
+    split.add_argument("--output-b", required=True)
+    split.add_argument("--fraction-b", type=float, default=0.2, help="Share of subjects in B")
+    split.add_argument("--seed", type=int, default=0)
     train = sub.add_parser("pretrain", help="Pretrain on subject-disjoint NPZ partitions")
     train.add_argument("--train", required=True)
     train.add_argument("--validation", required=True)
@@ -65,6 +82,33 @@ def main(argv=None):
         dataset.save(args.output)
         print(f"Saved {len(dataset)} windows from {len(np.unique(dataset.subjects))} subjects "
               f"using {sampling} sampling")
+    elif args.command == "convert":
+        if args.dataset == "cgmacros":
+            if not args.sensor or not args.label:
+                parser.error("--sensor and --label are required for cgmacros")
+            path = cgmacros.to_canonical_csv(args.root, args.output, args.sensor, args.label)
+            _, description = cgmacros.CGMACROS_LABELS[args.label]
+            print(f"Wrote {path} ({args.sensor} sensor); label {args.label}: {description}")
+        else:
+            if args.sensor or args.label:
+                parser.error("--sensor/--label do not apply to shanghai; it is unlabeled")
+            path = shanghai.to_canonical_csv(args.root, args.output, args.cohort)
+            print(f"Wrote {path} (Shanghai {args.cohort}, unlabeled for pretraining)")
+    elif args.command == "split":
+        if not 0 < args.fraction_b < 1:
+            parser.error("--fraction-b must lie strictly between 0 and 1")
+        data = WindowSet.load(args.data)
+        subjects = np.unique(data.subjects)
+        order = np.random.default_rng(args.seed).permutation(len(subjects))
+        count = max(1, min(len(subjects) - 1, round(args.fraction_b * len(subjects))))
+        chosen = set(subjects[order[:count]].tolist())
+        in_b = np.isin(data.subjects, list(chosen))
+        a, b = data.subset(~in_b), data.subset(in_b)
+        assert_subject_disjoint(a, b)
+        a.save(args.output_a)
+        b.save(args.output_b)
+        print(f"A: {len(a)} windows / {len(np.unique(a.subjects))} subjects -> {args.output_a}")
+        print(f"B: {len(b)} windows / {len(np.unique(b.subjects))} subjects -> {args.output_b}")
     elif args.command == "pretrain":
         config = TrainConfig(epochs=args.epochs, batch_size=args.batch_size, seed=args.seed, device=args.device)
         fit(WindowSet.load(args.train), WindowSet.load(args.validation), args.output, config)

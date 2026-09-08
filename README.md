@@ -85,10 +85,41 @@ Create the three CSV partitions by **subject**, before preparing windows. Train 
 
 For each downstream fold, a standardizer and L2 logistic regression are fit only on training subjects. All days of a subject remain together. The same folds compare six simple glucose summaries, a frozen random encoder, and the frozen pretrained encoder. Reported AP is scikit-learn average precision, not trapezoidal PR-AUC.
 
+## Public cohorts
+
+Two open cohorts, both downstream cohorts in the paper itself. Neither is redistributed here; `src/glucofm/datasets/` converts each archive into the canonical CSV above, resolving units, timestamps and subject identifiers inside the adapter. Download instructions, the published-file quirks the adapters absorb, and the clinical source of every label threshold are in [docs/datasets.md](docs/datasets.md).
+
+- **CGMacros** (PhysioNet, CC BY-NC-SA 4.0, 45 subjects, ten days each). Downstream. A Dexcom G6 Pro at five minutes and a FreeStyle Libre Pro at fifteen were worn at the same time; they stay **separate partitions** and there is no merged mode. The published series are linearly interpolated onto a one-minute grid, so the adapter reconstructs the real sensor samples rather than presenting interpolation as observation. Four subject-level labels come from the bio panel.
+- **ShanghaiT2DM** (figshare, CC BY 4.0, 100 patients, 109 recording periods, ~28,095 hours at fifteen minutes). Pretraining, emitted unlabeled.
+
+```bash
+python -m pip install -e '.[datasets]'   # Shanghai ships Excel workbooks
+
+glucofm convert --dataset shanghai --root shanghai --cohort T2DM --output shanghai-t2dm.csv
+glucofm prepare --csv shanghai-t2dm.csv --output shanghai-t2dm.npz \
+  --sampling pretraining --sampling-seed 0
+glucofm split --data shanghai-t2dm.npz --output-a pretrain.npz --output-b preval.npz \
+  --fraction-b 0.2 --seed 0
+
+glucofm convert --dataset cgmacros --root cgmacros \
+  --sensor dexcom --label diabetes --output cgm-dexcom-diabetes.csv
+glucofm prepare --csv cgm-dexcom-diabetes.csv --output cgm-dexcom-diabetes.npz \
+  --sampling non-overlapping
+
+glucofm pretrain --train pretrain.npz --validation preval.npz \
+  --epochs 120 --batch-size 128 --output runs/shanghai
+glucofm probe --checkpoint runs/shanghai/last.pt --data cgm-dexcom-diabetes.npz \
+  --folds 5 --repeats 10 --output probe.json
+```
+
+`glucofm split` partitions an NPZ by subject and rejects any overlap, so pretraining and model-selection subjects stay disjoint. Probing rejects overlap with either.
+
 ## Evidence and fidelity
 
+- [Real-data experiment](reports/real-data.md): pretraining on ShanghaiT2DM, subject-disjoint evaluation on CGMacros, with both controls in every table.
 - [Synthetic smoke experiment](reports/synthetic-smoke.md): actual measurements, configuration, baselines and ablation; no clinical interpretation.
 - [Equation-to-code map and implementation decisions](docs/implementation-decisions.md): what follows v1, what is assumed, and what remains outside scope.
+- [Cohort adapters](docs/datasets.md): downloads, unit and timezone conventions, and every label threshold with its clinical source.
 - [From biosignals to this model](docs/biosignal-connections.md): windowing, intersubject variability, and representation learning.
 - `tests/`: hidden-input isolation, missingness invariance, causal filtering, loss weights, gradient paths, EMA behavior, grouped folds and checkpoint round trips.
 
