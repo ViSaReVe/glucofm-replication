@@ -11,6 +11,7 @@ make the observation mask meaningless.
 """
 
 import csv
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 import re
@@ -81,45 +82,100 @@ def _a1c_percent(panel: dict[str, float]) -> float:
     return value
 
 
-# Each entry is (predicate, threshold description). Thresholds and their clinical
-# sources -- including the two that the literature does not settle -- are in
-# docs/datasets.md; none of them is invented here.
+def _at_least(column: str, minimum: float):
+    """One three-valued term: True, False, or None when the panel value is absent."""
+    def term(panel):
+        value = panel[column]
+        return None if value != value else bool(value >= minimum)
+    return term
+
+
+def _derived_at_least(derive, minimum: float):
+    def term(panel):
+        value = derive(panel)
+        return None if value != value else bool(value >= minimum)
+    return term
+
+
+@dataclass(frozen=True)
+class LabelRule:
+    """A disjunction of thresholds evaluated in three-valued logic.
+
+    Missing panel values are `None`, not `False`. A comparison against a missing
+    value used to collapse to False, which turned an undecidable panel into a
+    confident negative -- exactly the direction that quietly inflates a control's
+    apparent performance. `evaluate` keeps the two apart.
+    """
+
+    terms: tuple
+    description: str
+
+    def evaluate(self, panel: dict[str, float]) -> bool | None:
+        outcomes = [term(panel) for term in self.terms]
+        # A single satisfied threshold settles an OR rule even when others are
+        # missing: a known positive stays positive on a partial panel.
+        if any(outcome is True for outcome in outcomes):
+            return True
+        # Otherwise an absent term means the rule is undecided, never negative.
+        if any(outcome is None for outcome in outcomes):
+            return None
+        return False
+
+
+# Thresholds and their clinical sources -- including the two the literature does
+# not settle -- are in docs/datasets.md; none of them is invented here.
 CGMACROS_LABELS = {
-    "insulin_resistance": (
-        lambda p: homa_ir(p) >= 2.5,
+    "insulin_resistance": LabelRule(
+        (_derived_at_least(homa_ir, 2.5),),
         "HOMA-IR >= 2.5 (no consensus cutoff exists; see docs/datasets.md)"),
-    "obesity": (
-        lambda p: p["BMI"] >= 30.0,
+    "obesity": LabelRule(
+        (_at_least("BMI", 30.0),),
         "BMI >= 30 kg/m^2 (WHO obesity class I)"),
-    "hyperlipidemia": (
-        lambda p: (p["Cholesterol"] >= 240.0 or p["LDL (Cal)"] >= 160.0
-                   or p["Triglycerides"] >= 200.0),
+    "hyperlipidemia": LabelRule(
+        (_at_least("Cholesterol", 240.0), _at_least("LDL (Cal)", 160.0),
+         _at_least("Triglycerides", 200.0)),
         "NCEP ATP III 'high': total cholesterol >= 240, LDL >= 160, or "
         "triglycerides >= 200 mg/dL (the borderline-high set is also defensible; "
         "see docs/datasets.md)"),
-    "diabetes": (
-        lambda p: _a1c_percent(p) >= 6.5,
+    "diabetes": LabelRule(
+        (_derived_at_least(_a1c_percent, 6.5),),
         "HbA1c >= 6.5% (ADA diagnostic threshold)"),
 }
 
 
-def subject_labels(root, label: str) -> dict[str, int]:
-    """Binary subject-level labels. Subjects with a missing input are dropped."""
+def _rule(label: str) -> LabelRule:
     if label not in CGMACROS_LABELS:
         raise ValueError(f"Unknown label {label!r}; choose from {sorted(CGMACROS_LABELS)}")
-    predicate, _ = CGMACROS_LABELS[label]
-    labels = {}
+    return CGMACROS_LABELS[label]
+
+
+def resolve_labels(root, label: str) -> tuple[dict[str, int], list[str]]:
+    """Binary subject labels, plus the subjects the rule could not decide.
+
+    A subject is decided positive as soon as one threshold is met, even if other
+    inputs of the same rule are missing. A subject with no satisfied threshold and
+    at least one missing input is *undecided* and is returned separately rather
+    than being labelled negative.
+    """
+    rule = _rule(label)
+    labels, undecided = {}, []
     for subject, panel in read_bio_panel(root).items():
         try:
-            outcome = predicate(panel)
+            outcome = rule.evaluate(panel)
         except KeyError as error:
             raise ValueError(f"bio.csv is missing column {error} needed by {label!r}") from error
-        if outcome != outcome:  # NaN propagated from a missing panel value
-            continue
-        labels[subject] = int(bool(outcome))
+        if outcome is None:
+            undecided.append(subject)
+        else:
+            labels[subject] = int(outcome)
     if len(set(labels.values())) < 2:
         raise ValueError(f"Label {label!r} is constant across CGMacros subjects")
-    return labels
+    return labels, undecided
+
+
+def subject_labels(root, label: str) -> dict[str, int]:
+    """Decided subject-level labels; undecided subjects are excluded, not negative."""
+    return resolve_labels(root, label)[0]
 
 
 def subject_id(number: int) -> str:
@@ -220,7 +276,11 @@ def to_canonical_csv(root, output, sensor: str, label: str) -> Path:
         raise ValueError(f"Unknown sensor {sensor!r}; choose from {sorted(CGMACROS_SENSORS)}")
     column, _ = CGMACROS_SENSORS[sensor]
     root = _dataset_root(root)
-    labels = subject_labels(root, label)
+    labels, undecided = resolve_labels(root, label)
+    if undecided:
+        # Never silent: an undecidable panel is excluded, and says so.
+        print(f"{label}: {len(undecided)} subject(s) excluded as undecidable "
+              f"(missing panel input, no satisfied threshold): {', '.join(undecided)}")
     files = sorted(root.glob("CGMacros-*/CGMacros-*.csv"))
     if not files:
         raise FileNotFoundError(f"No CGMacros-*/CGMacros-*.csv under {root}; see docs/datasets.md")
@@ -234,7 +294,7 @@ def to_canonical_csv(root, output, sensor: str, label: str) -> Path:
             number = int(re.search(r"CGMacros-(\d+)\.csv$", path.name).group(1))
             subject = subject_id(number)
             if subject not in labels:
-                continue  # panel value needed by this label is missing for the subject
+                continue  # rule undecidable for this subject; excluded, not negative
             for time, value in _read_sensor(path, column):
                 if time.utcoffset() is not None:
                     raise ValueError(f"{path.name} carries a timezone offset; expected local naive")

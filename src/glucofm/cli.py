@@ -87,7 +87,7 @@ def main(argv=None):
             if not args.sensor or not args.label:
                 parser.error("--sensor and --label are required for cgmacros")
             path = cgmacros.to_canonical_csv(args.root, args.output, args.sensor, args.label)
-            _, description = cgmacros.CGMACROS_LABELS[args.label]
+            description = cgmacros.CGMACROS_LABELS[args.label].description
             print(f"Wrote {path} ({args.sensor} sensor); label {args.label}: {description}")
         else:
             if args.sensor or args.label:

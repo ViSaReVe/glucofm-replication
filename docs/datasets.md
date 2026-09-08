@@ -92,8 +92,33 @@ with Shanghai patient numbers, hence the prefix.
 All four come from `bio.csv`, are subject-level, and are binarised for the binary
 probe. Values carrying a lab flag (`2.5 (low)`) are parsed; the sentinels the data
 dictionary documents as calculation errors — `LDL (Cal) = 800`, `VLDL (Cal) = 400`,
-`Cho/HDL Ratio = 400` — are treated as missing. A subject missing an input for a
-given label is dropped from that label's partition, not imputed.
+`Cho/HDL Ratio = 400` — are treated as missing.
+
+#### Partial panels
+
+Rules are evaluated in **three-valued logic**, so a missing input is `None` rather
+than `False`:
+
+- **A satisfied threshold settles the rule.** Hyperlipidemia is a disjunction, so a
+  subject over any one of the three cutoffs is positive even if another input of the
+  same rule is missing. A known positive stays positive on a partial panel.
+- **Insufficient evidence is undecided, never negative.** With no threshold met and
+  at least one input missing, the subject is excluded from that label's partition —
+  not imputed, and not labelled negative.
+
+This matters because the natural spelling of the rule gets it wrong: `nan >= 160.0`
+is `False` in Python, so a plain comparison silently converts an undecidable panel
+into a confident negative. `LabelRule.evaluate` keeps the two apart, and
+`resolve_labels` returns the undecided subjects alongside the decided ones so the
+exclusions are visible; `glucofm convert` prints them.
+
+On the published cohort this policy changes nothing. Exactly one subject
+(`cgmacros-012`) has an unusable input — the `LDL (Cal) = 800` sentinel — and its
+triglycerides of 1150 mg/dL clear the 200 threshold outright, so it is decided
+positive either way. All 45 subjects are decided for all four labels. Excluding that
+subject instead is a sensitivity analysis, not a correction; doing so moves
+hyperlipidemia AP by several points in a 45-subject cohort, which says more about the
+cohort's size than about the label.
 
 | Label | Rule | Source | Positives / 45 |
 |---|---|---|---:|

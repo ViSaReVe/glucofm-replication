@@ -108,10 +108,63 @@ def test_cgmacros_rejects_hba1c_that_is_not_ngsp_percent(tmp_path):
 def test_cgmacros_treats_documented_error_sentinels_as_missing(tmp_path):
     root = write_cgmacros(tmp_path / "cgmacros",
                           [bio_row(1, ldl=800.0, cholesterol=100.0, triglycerides=50.0),
-                           bio_row(2, ldl=200.0)])
-    labels = cgmacros.subject_labels(root, "hyperlipidemia")
-    # LDL 800 is documented as a calculation error; it must not read as very high LDL.
-    assert labels == {"cgmacros-001": 0, "cgmacros-002": 1}
+                           bio_row(2, ldl=200.0),
+                           bio_row(3, ldl=90.0, cholesterol=150.0, triglycerides=80.0)],
+                          subjects=(1, 2, 3))
+    labels, undecided = cgmacros.resolve_labels(root, "hyperlipidemia")
+    # LDL 800 is documented as a calculation error, so it must not read as very high
+    # LDL -- and with no other threshold met the panel is undecidable, not negative.
+    assert labels == {"cgmacros-002": 1, "cgmacros-003": 0}
+    assert undecided == ["cgmacros-001"]
+
+
+def test_partial_panel_keeps_a_known_positive_positive(tmp_path):
+    # The real CGMacros case: cgmacros-012 has an unusable LDL but triglycerides
+    # 1150, far over the threshold. One satisfied term settles an OR rule.
+    root = write_cgmacros(tmp_path / "cgmacros",
+                          [bio_row(1, ldl=800.0, cholesterol=213.0, triglycerides=1150.0),
+                           bio_row(2, ldl=100.0, cholesterol=180.0, triglycerides=100.0)],
+                          subjects=(1, 2))
+    labels, undecided = cgmacros.resolve_labels(root, "hyperlipidemia")
+    assert labels == {"cgmacros-001": 1, "cgmacros-002": 0}
+    assert undecided == []
+
+
+def test_insufficient_evidence_is_never_labelled_negative(tmp_path):
+    # Every rule, including the single-term ones: a missing input must not collapse
+    # to a confident negative. `nan >= threshold` is False, which is the trap.
+    rows = [bio_row(1, bmi=float("nan"), a1c=float("nan"), insulin="",
+                    ldl=float("nan"), cholesterol=100.0, triglycerides=50.0),
+            bio_row(2, bmi=34.0, a1c=7.0, insulin="20.0", glucose=120.0,
+                    ldl=200.0),
+            bio_row(3, bmi=22.0, a1c=5.0, insulin="3.0", glucose=80.0,
+                    ldl=90.0, cholesterol=150.0, triglycerides=80.0)]
+    root = write_cgmacros(tmp_path / "cgmacros", rows, subjects=(1, 2, 3))
+    for label in ("obesity", "diabetes", "insulin_resistance", "hyperlipidemia"):
+        labels, undecided = cgmacros.resolve_labels(root, label)
+        assert undecided == ["cgmacros-001"], label
+        assert "cgmacros-001" not in labels, label
+        assert labels["cgmacros-002"] == 1 and labels["cgmacros-003"] == 0, label
+
+
+def test_undecided_subjects_never_reach_the_canonical_csv(tmp_path):
+    rows = [bio_row(1, bmi=float("nan")), bio_row(2, bmi=34.0), bio_row(3, bmi=22.0)]
+    root = write_cgmacros(tmp_path / "cgmacros", rows, subjects=(1, 2, 3))
+    path = cgmacros.to_canonical_csv(root, tmp_path / "obesity.csv", "dexcom", "obesity")
+    with open(path) as stream:
+        subjects = {row["subject_id"] for row in csv.DictReader(stream)}
+    assert subjects == {"cgmacros-002", "cgmacros-003"}
+
+
+def test_label_rules_evaluate_in_three_valued_logic():
+    rule = cgmacros.CGMACROS_LABELS["hyperlipidemia"]
+    nan = float("nan")
+    satisfied = {"Cholesterol": nan, "LDL (Cal)": nan, "Triglycerides": 300.0}
+    undecidable = {"Cholesterol": 100.0, "LDL (Cal)": nan, "Triglycerides": 50.0}
+    settled = {"Cholesterol": 100.0, "LDL (Cal)": 90.0, "Triglycerides": 50.0}
+    assert rule.evaluate(satisfied) is True
+    assert rule.evaluate(undecidable) is None
+    assert rule.evaluate(settled) is False
 
 
 def test_cgmacros_label_thresholds_sit_where_the_documentation_says(tmp_path):
