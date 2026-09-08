@@ -177,6 +177,42 @@ def from_csv(path, binning="floor", *, sampling="non_overlapping", seed=0) -> Wi
                             + (f", seed={seed}" if rng is not None else ""))
 
 
+def split_subjects(path, output_a, output_b, fraction_b=0.2, seed=0) -> tuple[Path, Path]:
+    """Split a canonical CSV into two subject-disjoint canonical CSVs.
+
+    Partitioning by subject *before* windowing is what lets each side choose its own
+    sampling mode: overlapping windows for the pretraining side, non-overlapping for
+    a validation or downstream side. Splitting after windowing forces one mode on
+    both, which is how the recorded 2026-09-07 run ended up with overlapping
+    validation windows (see docs/implementation-decisions.md, assumption 11).
+    """
+    if not 0 < fraction_b < 1:
+        raise ValueError("fraction_b must lie strictly between 0 and 1")
+    rows = []
+    with open(path, newline="") as stream:
+        reader = csv.DictReader(stream)
+        fields = list(reader.fieldnames or [])
+        if "subject_id" not in fields:
+            raise ValueError("Canonical CSV needs a subject_id column")
+        rows = list(reader)
+    subjects = sorted({row["subject_id"] for row in rows})
+    if len(subjects) < 2:
+        raise ValueError("Need at least two subjects to split")
+    order = np.random.default_rng(seed).permutation(len(subjects))
+    count = max(1, min(len(subjects) - 1, round(fraction_b * len(subjects))))
+    chosen = {subjects[i] for i in order[:count]}
+    paths = []
+    for output, wanted in ((output_a, False), (output_b, True)):
+        output = Path(output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with open(output, "w", newline="") as stream:
+            writer = csv.DictWriter(stream, fieldnames=fields)
+            writer.writeheader()
+            writer.writerows(row for row in rows if (row["subject_id"] in chosen) == wanted)
+        paths.append(output)
+    return tuple(paths)
+
+
 def synthetic_windows(subjects=64, days=3, seed=42) -> WindowSet:
     """Toy regimes, NOT clinical diagnoses or validated simulated physiology.
 

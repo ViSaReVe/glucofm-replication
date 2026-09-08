@@ -7,7 +7,8 @@ import torch
 
 from glucofm.augment import augment, compression_profile
 from glucofm.data import (
-    STRIDE_STEPS, WindowSet, align_window, assert_subject_disjoint, from_csv, synthetic_windows,
+    STRIDE_STEPS, WindowSet, align_window, assert_subject_disjoint, from_csv,
+    split_subjects, synthetic_windows,
 )
 from glucofm.evaluate import probe, subject_splits, summary_features
 
@@ -160,3 +161,45 @@ def test_unknown_sampling_mode_is_rejected(tmp_path):
     path = write_trace(tmp_path / "day.csv", 2)
     with pytest.raises(ValueError, match="sampling must be"):
         from_csv(path, sampling="overlapping")
+
+
+def test_subject_partition_lets_each_side_choose_its_sampling_mode(tmp_path):
+    # Partitioning before windowing is the point: splitting an already-windowed NPZ
+    # forces one sampling mode on both sides, which is how the recorded run ended up
+    # with overlapping validation windows.
+    path = tmp_path / "cohort.csv"
+    start = datetime(2026, 1, 1, 6, 30)
+    with path.open("w", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(["subject_id", "timestamp", "glucose_mg_dl", "label"])
+        for subject in range(6):
+            for minute in range(0, 1440 * 6, 5):
+                writer.writerow([f"person-{subject}",
+                                 (start + timedelta(minutes=minute)).isoformat(), 100, -1])
+    a, b = split_subjects(path, tmp_path / "a.csv", tmp_path / "b.csv",
+                          fraction_b=0.5, seed=0)
+    train = from_csv(a, sampling="pretraining", seed=0)
+    validation = from_csv(b, sampling="non_overlapping")
+    assert_subject_disjoint(train, validation)
+    assert len(set(train.start.tolist())) > 1
+    assert len(set(validation.start.tolist())) == 1
+
+
+def test_subject_partition_is_seeded_and_keeps_every_row(tmp_path):
+    path = tmp_path / "cohort.csv"
+    start = datetime(2026, 1, 1, 0, 0)
+    with path.open("w", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(["subject_id", "timestamp", "glucose_mg_dl", "label"])
+        for subject in range(10):
+            for step in range(4):
+                writer.writerow([f"person-{subject}",
+                                 (start + timedelta(minutes=5 * step)).isoformat(), 100, -1])
+    a, b = split_subjects(path, tmp_path / "a.csv", tmp_path / "b.csv", 0.3, seed=7)
+    rows = lambda p: [r for r in open(p).read().splitlines()[1:] if r]
+    subjects = lambda p: {r.split(",")[0] for r in rows(p)}
+    assert len(rows(a)) + len(rows(b)) == 40
+    assert not subjects(a) & subjects(b)
+    assert len(subjects(b)) == 3
+    again = split_subjects(path, tmp_path / "c.csv", tmp_path / "d.csv", 0.3, seed=7)
+    assert subjects(again[1]) == subjects(b)

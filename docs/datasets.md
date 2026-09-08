@@ -238,7 +238,24 @@ pretraining batches regardless.
 Pretraining uses `--sampling pretraining` (Appendix A.2 overlapping windows). On
 this cohort that is the difference between 1,093 windows covering 69 distinct clock
 phases and 2,157 windows covering all 288. Downstream CGMacros partitions stay
-`non-overlapping`.
+`non-overlapping`, because cross-validation folds are cut from them.
+
+Partition by subject **before** windowing, with `glucofm partition`, so the
+pretraining and validation sides can take different sampling modes:
+
+```bash
+glucofm partition --csv shanghai-t2dm.csv \
+  --output-a shanghai-pretrain.csv --output-b shanghai-validation.csv \
+  --fraction-b 0.2 --seed 0
+glucofm prepare --csv shanghai-pretrain.csv --output pretrain.npz \
+  --sampling pretraining --sampling-seed 0
+glucofm prepare --csv shanghai-validation.csv --output validation.npz \
+  --sampling non-overlapping
+```
+
+Splitting an already-windowed NPZ instead forces one mode on both sides. The
+recorded run did exactly that and so used overlapping validation windows; see
+`docs/implementation-decisions.md`, assumption 11.
 
 ## What the adapters do not do
 

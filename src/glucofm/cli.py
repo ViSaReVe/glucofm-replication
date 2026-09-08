@@ -7,7 +7,9 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from .data import WindowSet, assert_subject_disjoint, from_csv, synthetic_windows
+from .data import (
+    WindowSet, assert_subject_disjoint, from_csv, split_subjects, synthetic_windows,
+)
 from .datasets import cgmacros, shanghai
 from .evaluate import embeddings, probe, summary_features
 from .model import GlucoFMEncoder
@@ -51,6 +53,14 @@ def main(argv=None):
                               "(the recorded experiment's policy) keeps only "
                               "provably-real points; lattice also recovers plateaus. "
                               "See docs/datasets.md.")
+    partition = sub.add_parser(
+        "partition", help="Split a canonical CSV into subject-disjoint CSVs")
+    partition.add_argument("--csv", required=True)
+    partition.add_argument("--output-a", required=True)
+    partition.add_argument("--output-b", required=True)
+    partition.add_argument("--fraction-b", type=float, default=0.2,
+                           help="Share of subjects in B")
+    partition.add_argument("--seed", type=int, default=0)
     split = sub.add_parser("split", help="Split an NPZ into subject-disjoint partitions")
     split.add_argument("--data", required=True)
     split.add_argument("--output-a", required=True)
@@ -103,6 +113,13 @@ def main(argv=None):
                 parser.error("--sensor/--label do not apply to shanghai; it is unlabeled")
             path = shanghai.to_canonical_csv(args.root, args.output, args.cohort)
             print(f"Wrote {path} (Shanghai {args.cohort}, unlabeled for pretraining)")
+    elif args.command == "partition":
+        # Partition before windowing so each side can pick its own sampling mode.
+        a, b = split_subjects(args.csv, args.output_a, args.output_b, args.fraction_b, args.seed)
+        count = lambda path: len({row.split(",")[0] for row in
+                                  open(path).read().splitlines()[1:] if row})
+        print(f"A: {count(a)} subjects -> {a}")
+        print(f"B: {count(b)} subjects -> {b}")
     elif args.command == "split":
         if not 0 < args.fraction_b < 1:
             parser.error("--fraction-b must lie strictly between 0 and 1")
