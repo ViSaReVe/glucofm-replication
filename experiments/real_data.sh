@@ -171,7 +171,8 @@ else
     --output "$OUT/prepared/validation.npz" --sampling non-overlapping
 fi
 
-# Downstream partitions are always non-overlapping: CV folds are cut from them.
+# Downstream partitions are always non-overlapping. Subject-grouped folds already
+# prevent leakage; non-overlap stops one subject's hours being counted repeatedly.
 for sensor in $SENSORS; do
   for label in $LABELS; do
     glucofm prepare --csv "$OUT/canonical/cgmacros-$sensor-$label.csv" \

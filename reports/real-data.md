@@ -58,7 +58,10 @@ windowed with the Appendix A.2 overlapping sampler.
 sampling gives 288 distinct clock phases against 69 for non-overlapping tiling.
 
 **Downstream cohort: CGMacros**, converted by `glucofm.datasets.cgmacros`,
-non-overlapping windows, the two sensors kept as separate partitions.
+non-overlapping windows, the two sensors kept as separate partitions. Non-overlap is
+not a leakage guard here — cross-validation is subject-grouped, so a subject's windows
+never straddle a fold — it stops the same hours of a subject being counted repeatedly
+within a fold. Either way the window counts below are not independent sample counts.
 
 | Partition | subjects | windows | mean density | positives / subjects |
 |---|---:|---:|---:|---|

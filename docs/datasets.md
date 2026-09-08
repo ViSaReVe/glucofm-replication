@@ -259,7 +259,10 @@ pretraining batches regardless.
 Pretraining uses `--sampling pretraining` (Appendix A.2 overlapping windows). On
 this cohort that is the difference between 1,093 windows covering 69 distinct clock
 phases and 2,157 windows covering all 288. Downstream CGMacros partitions stay
-`non-overlapping`, because cross-validation folds are cut from them.
+`non-overlapping`. That is not a leakage guard — cross-validation is subject-grouped,
+so a subject's windows never straddle a fold however they are cut. It controls
+*weighting*: overlapping windows would count the same hours of a subject repeatedly
+within a fold, over-weighting densely recorded subjects.
 
 Partition by subject **before** windowing, with `glucofm partition`, so the
 pretraining and validation sides can take different sampling modes:

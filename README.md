@@ -76,7 +76,7 @@ cohortA-person001,2026-01-01T06:35:00,108,0
 
 The two-row example illustrates the schema; a real import needs at least a complete day. Missing readings may be absent or blank. The importer averages duplicate time bins, keeps an observation mask, and splits at gaps longer than one hour.
 
-`--sampling` chooses how windows are cut from each segment and is always stated explicitly. `non-overlapping` (the default) tiles disjoint days; because that stride is exactly 24 hours, every window in a segment also inherits the segment's start clock index. `pretraining` follows Appendix A.2 instead, advancing by a seeded random stride so windows overlap by 20-80% of a day and cover mixed circadian phases. Use it only for the pretraining partition — validation and downstream partitions must stay non-overlapping so that near-duplicate days cannot straddle a fold.
+`--sampling` chooses how windows are cut from each segment and is always stated explicitly. `non-overlapping` (the default) tiles disjoint days; because that stride is exactly 24 hours, every window in a segment also inherits the segment's start clock index. `pretraining` follows Appendix A.2 instead, advancing by a seeded random stride so windows overlap by 20-80% of a day and cover mixed circadian phases. Use it only for the pretraining partition. Validation and downstream partitions stay non-overlapping — not to prevent leakage, since subject-grouped folds already keep a subject's windows together, but to stop the same hours of a subject being counted repeatedly and over-weighting densely recorded subjects.
 
 ```bash
 glucofm prepare --csv pretrain.csv --output pretrain.npz \
