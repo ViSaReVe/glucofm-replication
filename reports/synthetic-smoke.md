@@ -54,7 +54,7 @@ Runtime: Python 3.12.4, PyTorch 2.14.0, NumPy 2.5.3, macOS 26.6.2 on arm64. Exac
 
 ## Verification
 
-All **25 tests passed** on CPU at the time of this run; the suite has since grown to 35. Tests exercise mask and hidden-input isolation, causal filtering with fixed normalized input, rate-of-change gaps, weighted targets, gradients through both streams and fusion, EMA freezing/update behavior, subject separation, and a train/save/reload/feature-extraction round trip.
+All **25 tests passed** on CPU at the time of this run; the suite has since grown to 39. Tests exercise mask and hidden-input isolation, causal filtering with fixed normalized input, rate-of-change gaps, weighted targets, gradients through both streams and fusion, EMA freezing/update behavior, subject separation, and a train/save/reload/feature-extraction round trip.
 
 The standalone `glucofm probe` command also loaded the saved best checkpoint and reproduced the demo's three non-ablation metric summaries exactly. Python compilation and command help were checked. The included GitHub Actions workflow has not run on GitHub yet.
 

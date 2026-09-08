@@ -231,6 +231,18 @@ def transition_weights(observed: Tensor, hidden: Tensor) -> Tensor:
     return (~hidden[:, :-1]).to(density.dtype) * density[:, :-1] * density[:, 1:]
 
 
+def objective_support(observed: Tensor, hidden: Tensor) -> tuple[Tensor, Tensor]:
+    """Per-window total weight behind each objective: contextual w, then transition q.
+
+    A window whose contextual weight sums to zero contributes nothing to L_MCR; one
+    whose transition weight sums to zero contributes nothing to L_TD. Both are legal
+    outcomes of hiding and sparsity, and both are silent in the loss, so training
+    reports the fractions rather than leaving them implicit.
+    """
+    density = observed.to(torch.float32).reshape(-1, PATCHES, PATCH).mean(-1)
+    return (density * hidden).sum(-1), transition_weights(observed, hidden).sum(-1)
+
+
 def sample_hidden(batch: int, device: torch.device) -> Tensor:
     ratios = torch.empty(batch, device=device).uniform_(0.5, 0.6)
     counts = (ratios * PATCHES).floor().long()

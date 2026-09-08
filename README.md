@@ -50,7 +50,9 @@ glucofm demo --epochs 10 --ablation --output runs/synthetic-demo
 
 The default demo uses the documented main Transformer dimensions. It shortens training and uses synthetic data; it is not a small alias for the paper's full experiment. CPU is the default. `--device mps` and `--device cuda` are supported command options but require validation on the intended hardware.
 
-The demo writes best/last checkpoints, training histories, runtime/configuration metadata, a portable evaluation window file, fold assignments, and evaluation metrics. Model selection uses separate pretraining-validation subjects. Probe labels never enter the pretraining batches.
+The demo writes the selected checkpoint, training histories, runtime/configuration metadata, a portable evaluation window file, fold assignments, and evaluation metrics. Probe labels never enter the pretraining batches.
+
+Checkpoint selection keeps the **last** epoch, and `last.pt` is that checkpoint. Validation loss is not a selection criterion here: the target is an EMA of the online encoder, so the loss measures how predictable the teacher has become rather than how good the representation is. In a paired experiment over 4 seeds, 10 vs 60 epochs on identical data and folds, validation loss improved in 4/4 runs by 2.3-3.9x while downstream AP got *worse* in 4/4, -1.77 AP with 95% CI [-2.68, -0.87]. The loss is still logged every epoch, together with two diagnostics that do track representation health: the effective rank of the validation embeddings (entropy of the centred singular-value spectrum) and the fraction of windows carrying no weight for one or both objectives.
 
 ## Use your own data
 
@@ -75,7 +77,7 @@ glucofm prepare --csv downstream.csv --output downstream.npz --sampling non-over
 glucofm pretrain --train pretrain.npz --validation validation.npz \
   --epochs 120 --batch-size 128 --output runs/real-data
 
-glucofm probe --checkpoint runs/real-data/best.pt --data downstream.npz \
+glucofm probe --checkpoint runs/real-data/last.pt --data downstream.npz \
   --folds 5 --repeats 10 --output probe.json
 ```
 

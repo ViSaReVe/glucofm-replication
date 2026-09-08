@@ -3,6 +3,7 @@ import torch
 
 from glucofm.model import (
     CausalGaussian, GlucoFMEncoder, GlucoFMPretrainer, ModelConfig, WaveFeature,
+    objective_support,
     masked_moments, rate_of_change, sample_hidden, transition_weights, weighted_smooth_l1,
 )
 
@@ -244,3 +245,15 @@ def test_encoder_separates_windows_that_differ_only_in_where_readings_are_missin
     with torch.no_grad():
         out = encoder(glucose, observed, start)["embedding"]
     assert not torch.allclose(out[0], out[1])
+
+
+def test_objective_support_reports_windows_that_train_on_one_objective_or_neither():
+    observed = torch.ones(3, 288, dtype=torch.bool)
+    hidden = torch.zeros(3, 24, dtype=torch.bool)
+    hidden[0] = True                 # everything hidden: no transition source patch
+    hidden[1] = False                # nothing hidden: no contextual target
+    hidden[2, 5:15] = True           # both objectives supported
+    contextual, transition = objective_support(observed, hidden)
+    assert contextual[0] > 0 and transition[0] == 0
+    assert contextual[1] == 0 and transition[1] > 0
+    assert contextual[2] > 0 and transition[2] > 0
