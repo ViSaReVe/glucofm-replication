@@ -134,6 +134,8 @@ The whole experiment — partitioning, preparation, training, probing and aggreg
 
 It writes `aggregate.json` with pooled and paired metrics plus a provenance record: SHA-256 of every prepared dataset, package versions and the git commit. Cohorts must be downloaded first ([docs/datasets.md](docs/datasets.md)); nothing is redistributed here.
 
+**The output directory must be fresh** — absent, or existing and empty. Every invocation runs the whole pipeline, and there is no resume: `glucofm pretrain` always initialises a new model and optimizer, so re-entering a populated directory would restart training and overwrite the previous run's prepared data, checkpoints, logs and probe reports. A nonempty directory is refused before anything is written, and a run records a manifest of its configuration so a finished run can be identified later.
+
 It does **not** reproduce the recorded 2026-09-07 numbers, by design: it partitions before windowing so validation is non-overlapping, whereas the recorded run split an already-windowed NPZ. `LEGACY_VALIDATION=1` reproduces the original partitioning. Pretraining is stochastic across BLAS versions and thread counts in any case, so expect close rather than identical numbers; [reports/real-data.md](reports/real-data.md) is the record of the original run and is not regenerated.
 
 ## Evidence and fidelity

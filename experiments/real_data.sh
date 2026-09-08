@@ -10,10 +10,11 @@
 #
 #   ./experiments/real_data.sh <shanghai-root> <cgmacros-root> <output-dir>
 #
-# The output directory must be fresh. To continue an interrupted run, set
-# RESUME=1; the run manifest must match this configuration exactly and the probes
-# directory must contain nothing outside this run's grid. Nothing is ever deleted
-# or overwritten implicitly.
+# The output directory must be fresh: absent, or existing and empty. Every
+# invocation runs the whole pipeline. There is NO resume -- `glucofm pretrain`
+# always initialises a new model and optimizer, so re-entering a populated
+# directory would restart training and overwrite the previous run's checkpoints,
+# logs and probe reports. Nothing is ever deleted or overwritten implicitly.
 #
 # Provenance -- input hashes, package versions and the git commit -- is written
 # into <output-dir>/aggregate.json by the final step.
@@ -52,13 +53,9 @@ LEGACY_VALIDATION=${LEGACY_VALIDATION:-0}
 SENSORS=${SENSORS:-"dexcom libre"}
 LABELS=${LABELS:-"diabetes insulin_resistance hyperlipidemia obesity"}
 
-RESUME=${RESUME:-0}
-
 # --- Run identity -----------------------------------------------------------
-# Everything that changes what the outputs mean. A resume must match this
-# exactly, or the aggregate would pool results produced under different
-# settings -- e.g. a three-seed run followed by SEEDS=42 leaving seeds 43 and 44
-# behind, or a changed mask policy mixing two prepared datasets.
+# Everything that changes what the outputs mean, recorded so a finished run can be
+# identified later and so `aggregate` can hash it alongside the prepared data.
 manifest_text() {
   cat <<MANIFEST
 schema=1
@@ -94,42 +91,28 @@ expected_probes() {
 fail() { echo "ERROR: $*" >&2; exit 2; }
 
 # --- Output-directory guard -------------------------------------------------
-# Never overwrite or delete previous results implicitly.
-if [ -e "$OUT" ] && [ -n "$(ls -A "$OUT" 2>/dev/null)" ]; then
-  if [ "$RESUME" != "1" ]; then
-    fail "output directory '$OUT' is not empty.
-Refusing to write into it: an existing run's prepared data, checkpoints and probe
-reports would be overwritten, and stale probes from a previous grid would be pooled
-into the new aggregate.
-Use a fresh directory, or set RESUME=1 to continue a run whose manifest matches
-this configuration exactly."
-  fi
-  [ -f "$MANIFEST_PATH" ] || fail "RESUME=1 but '$MANIFEST_PATH' does not exist.
-Refusing to resume a run whose configuration cannot be verified."
-  if ! diff -u "$MANIFEST_PATH" <(manifest_text) > "$OUT/.manifest-diff" 2>&1; then
-    echo "--- manifest mismatch ---" >&2
-    cat "$OUT/.manifest-diff" >&2
-    rm -f "$OUT/.manifest-diff"
-    fail "RESUME=1 but this configuration differs from the manifest in '$OUT'.
-Resuming would mix results produced under different settings. Use a fresh directory."
-  fi
-  rm -f "$OUT/.manifest-diff"
-  # A matching manifest is not enough: the probes directory must contain nothing
-  # outside this run's grid, or aggregation would pool a stale seed or task.
-  if [ -d "$OUT/probes" ]; then
-    unexpected=$(comm -23 <(cd "$OUT/probes" && ls -1 *.json 2>/dev/null | sort) \
-                          <(expected_probes) || true)
-    if [ -n "$unexpected" ]; then
-      fail "probe reports in '$OUT/probes' are outside this run's grid:
-$unexpected
-These would be pooled into the aggregate. Move them aside or use a fresh directory."
-    fi
-  fi
-  echo "Resuming run in $OUT (manifest verified, no stale probe reports)."
-else
-  mkdir -p "$OUT"
-  manifest_text > "$MANIFEST_PATH"
+# A fresh output directory, every time. Nothing here is ever deleted or
+# overwritten, and there is deliberately no continuation mode for this release.
+if [ "${RESUME:-0}" != "0" ]; then
+  fail "RESUME is not supported.
+This workflow has no interrupted-run continuation. 'glucofm pretrain' always
+initialises a new model and optimizer, so re-entering a populated directory would
+restart every stage from the beginning and overwrite the previous run's prepared
+data, checkpoints, logs and probe reports -- while appearing to continue it.
+Point the script at a fresh output directory instead."
 fi
+
+if [ -e "$OUT" ] && [ -n "$(ls -A "$OUT" 2>/dev/null)" ]; then
+  fail "output directory '$OUT' is not empty.
+Refusing to write into it: this script runs the whole pipeline on every invocation,
+so an existing run's prepared data, checkpoints, logs and probe reports would be
+overwritten, and stale probe reports from a previous grid would be pooled into the
+new aggregate.
+Use a fresh directory."
+fi
+
+mkdir -p "$OUT"
+manifest_text > "$MANIFEST_PATH"
 
 mkdir -p "$OUT"/{canonical,prepared,runs,probes}
 glucofm() { python -m glucofm.cli --threads "$THREADS" "$@"; }
