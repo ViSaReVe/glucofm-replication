@@ -10,6 +10,11 @@
 #
 #   ./experiments/real_data.sh <shanghai-root> <cgmacros-root> <output-dir>
 #
+# The output directory must be fresh. To continue an interrupted run, set
+# RESUME=1; the run manifest must match this configuration exactly and the probes
+# directory must contain nothing outside this run's grid. Nothing is ever deleted
+# or overwritten implicitly.
+#
 # Provenance -- input hashes, package versions and the git commit -- is written
 # into <output-dir>/aggregate.json by the final step.
 #
@@ -46,6 +51,85 @@ RECOVERY=${RECOVERY:-slope-change}  # CGMacros mask policy; see docs/datasets.md
 LEGACY_VALIDATION=${LEGACY_VALIDATION:-0}
 SENSORS=${SENSORS:-"dexcom libre"}
 LABELS=${LABELS:-"diabetes insulin_resistance hyperlipidemia obesity"}
+
+RESUME=${RESUME:-0}
+
+# --- Run identity -----------------------------------------------------------
+# Everything that changes what the outputs mean. A resume must match this
+# exactly, or the aggregate would pool results produced under different
+# settings -- e.g. a three-seed run followed by SEEDS=42 leaving seeds 43 and 44
+# behind, or a changed mask policy mixing two prepared datasets.
+manifest_text() {
+  cat <<MANIFEST
+schema=1
+shanghai_root=$(cd "$SHANGHAI_ROOT" 2>/dev/null && pwd || echo "$SHANGHAI_ROOT")
+cgmacros_root=$(cd "$CGMACROS_ROOT" 2>/dev/null && pwd || echo "$CGMACROS_ROOT")
+seeds=$(echo $SEEDS | tr ' ' ',')
+sensors=$(echo $SENSORS | tr ' ' ',')
+labels=$(echo $LABELS | tr ' ' ',')
+partition_seed=$PARTITION_SEED
+sampling_seed=$SAMPLING_SEED
+validation_fraction=$VALIDATION_FRACTION
+epochs=$EPOCHS
+batch_size=$BATCH_SIZE
+folds=$FOLDS
+repeats=$REPEATS
+recovery=$RECOVERY
+legacy_validation=$LEGACY_VALIDATION
+MANIFEST
+}
+
+MANIFEST_PATH="$OUT/run-manifest.txt"
+
+expected_probes() {
+  for seed in $SEEDS; do
+    for sensor in $SENSORS; do
+      for label in $LABELS; do
+        echo "${sensor}_${label}.seed${seed}.json"
+      done
+    done
+  done | sort
+}
+
+fail() { echo "ERROR: $*" >&2; exit 2; }
+
+# --- Output-directory guard -------------------------------------------------
+# Never overwrite or delete previous results implicitly.
+if [ -e "$OUT" ] && [ -n "$(ls -A "$OUT" 2>/dev/null)" ]; then
+  if [ "$RESUME" != "1" ]; then
+    fail "output directory '$OUT' is not empty.
+Refusing to write into it: an existing run's prepared data, checkpoints and probe
+reports would be overwritten, and stale probes from a previous grid would be pooled
+into the new aggregate.
+Use a fresh directory, or set RESUME=1 to continue a run whose manifest matches
+this configuration exactly."
+  fi
+  [ -f "$MANIFEST_PATH" ] || fail "RESUME=1 but '$MANIFEST_PATH' does not exist.
+Refusing to resume a run whose configuration cannot be verified."
+  if ! diff -u "$MANIFEST_PATH" <(manifest_text) > "$OUT/.manifest-diff" 2>&1; then
+    echo "--- manifest mismatch ---" >&2
+    cat "$OUT/.manifest-diff" >&2
+    rm -f "$OUT/.manifest-diff"
+    fail "RESUME=1 but this configuration differs from the manifest in '$OUT'.
+Resuming would mix results produced under different settings. Use a fresh directory."
+  fi
+  rm -f "$OUT/.manifest-diff"
+  # A matching manifest is not enough: the probes directory must contain nothing
+  # outside this run's grid, or aggregation would pool a stale seed or task.
+  if [ -d "$OUT/probes" ]; then
+    unexpected=$(comm -23 <(cd "$OUT/probes" && ls -1 *.json 2>/dev/null | sort) \
+                          <(expected_probes) || true)
+    if [ -n "$unexpected" ]; then
+      fail "probe reports in '$OUT/probes' are outside this run's grid:
+$unexpected
+These would be pooled into the aggregate. Move them aside or use a fresh directory."
+    fi
+  fi
+  echo "Resuming run in $OUT (manifest verified, no stale probe reports)."
+else
+  mkdir -p "$OUT"
+  manifest_text > "$MANIFEST_PATH"
+fi
 
 mkdir -p "$OUT"/{canonical,prepared,runs,probes}
 glucofm() { python -m glucofm.cli --threads "$THREADS" "$@"; }
@@ -119,8 +203,17 @@ for seed in $SEEDS; do
 done
 
 echo "== 5. Aggregate, with provenance =="
+# Final guard: the probes directory must be exactly this run's grid. `aggregate`
+# pools every matching file it finds, so an extra one would silently join the mean.
+actual=$(cd "$OUT/probes" && ls -1 *.json 2>/dev/null | sort)
+expected=$(expected_probes)
+if [ "$actual" != "$expected" ]; then
+  echo "--- expected ---" >&2; echo "$expected" >&2
+  echo "--- found ---" >&2; echo "$actual" >&2
+  fail "probe reports in '$OUT/probes' do not match this run's grid exactly."
+fi
 glucofm aggregate --probes "$OUT/probes" --output "$OUT/aggregate.json" \
-  --provenance "$OUT/prepared"/*.npz
+  --provenance "$OUT/prepared"/*.npz "$MANIFEST_PATH"
 
 echo
 echo "Done. Aggregate: $OUT/aggregate.json"
