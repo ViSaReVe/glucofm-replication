@@ -4,11 +4,18 @@ Run date: 2026-09-07. This is the first experiment in this repository on real CG
 recordings. It does not replace [the synthetic smoke experiment](synthetic-smoke.md),
 which remains the record of the software demonstration on generated data.
 
-**What this measures.** How much of GlucoFM's reported advantage survives when the
-only pretraining data available is public. It is a question about data scale and
-corpus composition, not a test of whether the method works. The paper's headline
-result depends on a private corpus that is not obtainable, so nothing here can
-confirm or refute it, and nothing below should be read as trying to.
+**What this measures.** What frozen GlucoFM representations are worth on CGMacros
+when the only pretraining data available is public. The paper's headline result
+depends on a private corpus that is not obtainable, so nothing here can confirm or
+refute it, and nothing below should be read as trying to.
+
+**What it does not isolate.** This experiment changes corpus size, population,
+clinical setting and sensor sampling rate relative to the paper, all at once. It
+therefore cannot attribute the outcome to any one of them. "Not enough data" is a
+*hypothesis* consistent with the result, not an explanation this experiment
+establishes; a controlled data-size sweep holding population and evaluation fixed
+would be needed to test it. Earlier drafts of this report called the weak gain an
+expected consequence of data scale. That was an overclaim and is withdrawn.
 
 ## Result
 
@@ -18,11 +25,18 @@ sensor/task pairs, higher on 6 of 8**. Most per-task differences are within the
 spread across pretraining seeds. On this corpus, at this scale, **pretraining does
 not establish an advantage over the random-encoder control.**
 
-That is the finding, and it is a legitimate one. With roughly a fifth of the paper's
-pretraining hours, drawn from one cohort instead of five, a null-to-marginal result
-is the expected outcome. It is evidence about how much data this method needs before
-its representations beat an untrained network of the same shape — not evidence
-against the method.
+That is the finding, and it is a legitimate one. It is a measurement of this
+reimplementation, on this corpus, under this protocol. It is not evidence that the
+method fails: a different implementation, corpus or training procedure could give a
+different answer, and this run does not test any of them. Nor is it evidence that
+more data would fix it — see *What it does not isolate* above.
+
+Two absolute numbers are worth reading alongside the gains. Dexcom/hyperlipidemia has
+the largest gain over random (+4.37 AP) but a pretrained ROC-AUC of 48.72%, which is
+chance; a relative improvement there is not a useful classifier. And the high
+insulin-resistance AP sits on a high positive rate — 32 of 45 Dexcom subjects and 31
+of 44 Libre subjects are positive — so AP near 92 is closer to the base rate than it
+looks.
 
 The larger-looking margin over the six glucose summaries (+3.75 AP, higher on 7 of 8)
 is **not** attributable to pretraining. It is carried almost entirely by the two
@@ -123,6 +137,19 @@ and nothing more; with three seeds they are indicative, not inferential.
 The same picture: the pretrained encoder is close to the random encoder throughout,
 ahead on most tasks by under a point, behind on Libre/diabetes.
 
+## Independent reproduction
+
+An independent evaluation reran the CGMacros probes from the preserved seed-42/43/44
+checkpoints, using this repository's code and the prepared datasets. Across every
+sensor, task, seed and metric the **maximum absolute difference from the numbers in
+this report was 0.0**. It also verified that no training or validation subject from
+any checkpoint appears in the downstream data.
+
+That evaluation produced the corrections applied above (seed 42's minimum epoch, the
+scope of the objective-support diagnostic, and the data-scale framing) and the
+missing-label sensitivity analysis referenced under *Limitations*. It changed no
+repository code and retrained no model.
+
 ## Scale, against the paper's corpus
 
 The paper pretrains on 477 dataset-defined subjects and 109,066 hours across five
@@ -140,6 +167,9 @@ Readings is the least flattering framing and worth stating: ShanghaiT2DM samples
 Corpus composition differs more than size does. The paper mixes five cohorts spanning
 two sampling rates and several populations; this run has one cohort, one rate, one
 country, one clinical setting.
+
+These ratios describe the gap. They do not explain the result: size and composition
+moved together here, so neither can be credited with the outcome.
 
 ## Why these numbers are not directly comparable to the paper's Table 3
 
@@ -175,9 +205,9 @@ resistance (Libre) and 75.6 on obesity (Dexcom), without having been trained at 
 
 | Seed | Validation loss, epoch 1 → 120 | Minimum (epoch) | Effective rank, 1 → 120 | σ, 1 → 120 |
 |---|---|---|---|---|
-| 42 | 0.2216 → 0.0161 | 0.0161 (120) | 8.52 → 4.21 | 5.96 → 4.83 |
-| 43 | 0.2131 → 0.0290 | 0.0206 (51) | 7.67 → 5.96 | 5.96 → 4.76 |
-| 44 | 0.2084 → 0.0204 | 0.0158 (52) | 6.96 → 4.62 | 5.96 → 4.71 |
+| 42 | 0.2216 → 0.016140 | 0.016085 (117) | 8.52 → 4.21 | 5.96 → 4.83 |
+| 43 | 0.2131 → 0.029049 | 0.020614 (51) | 7.67 → 5.96 | 5.96 → 4.76 |
+| 44 | 0.2084 → 0.020399 | 0.015773 (52) | 6.96 → 4.62 | 5.96 → 4.71 |
 
 Two things the per-epoch diagnostics show that the loss alone does not.
 
@@ -187,15 +217,24 @@ the objective improves — the loss going down is compatible with the representa
 getting narrower, which is what the effective-rank diagnostic exists to surface.
 Whether that contraction causes the weak downstream result is not established here.
 
-**The loss-minimising epoch is not the last one in 2 of 3 runs** (epochs 51 and 52).
-On this cohort the old lowest-validation-loss rule would have selected genuinely
-different checkpoints, unlike the synthetic run where the minimum was always the
-final epoch. The keep-last rule and its justification are in
+**The loss-minimising epoch is not the last one in any of the three runs** (epochs
+117, 51 and 52). On this cohort the old lowest-validation-loss rule would have
+selected a different checkpoint every time, unlike the synthetic run where the
+minimum was always the final epoch. For seed 42 the difference is negligible
+(0.016085 at epoch 117 against 0.016140 at 120); for seeds 43 and 44 it is not. The
+keep-last rule and its justification are in
 [docs/implementation-decisions.md](../docs/implementation-decisions.md), assumption 10.
 
-No window in any epoch lacked weight for either objective
-(`windows_missing_an_objective` = 0.000 throughout), so nothing here trained on one
-objective or neither.
+*(An earlier version of this table recorded seed 42's minimum at epoch 120. That was
+a transcription error in the table only; `real-data/pretraining-runs.json` recorded
+117 throughout.)*
+
+**The objective-support diagnostic covers the validation set only.** No *validation*
+window in any epoch lacked weight for either objective
+(`windows_missing_an_objective` = 0.000 throughout). Training windows are augmented
+and hidden independently, and the training loop does not measure their support, so
+this run does not establish that every training window carried both objectives. That
+is a gap in the instrumentation, not a measurement.
 
 ## Limitations
 
@@ -213,22 +252,50 @@ objective or neither.
   evaluation. Since nothing here is evaluated on ShanghaiT2DM, subject separation
   holds for this experiment, but the corpus is not the paper's pretraining subset.
 - **Three seeds**, and variation across seeds is comparable to the effect being
-  measured. More seeds would sharpen this; they would not change its direction.
+  measured. Three initialization seeds do not establish statistical significance, and
+  the direction a larger seed sample would settle on is unknown.
+- **The eight sensor/task pairs are not eight independent cohorts.** Dexcom and Libre
+  were worn simultaneously by largely the same participants, so the two sensor rows
+  for a task are paired measurements, not replication.
+- **Metrics are over held-out daily windows, not one prediction per participant**, so
+  participants contributing more retained windows carry more weight.
 - **45 downstream subjects**, 12–32 positives per task. Small.
 - **No hyperparameter search**, on either the pretraining or the probe side. The
   paper's stated configuration was used as-is.
 - **CPU only.** MPS and CUDA were not exercised.
 - **No ablation** of the dynamics objective on real data; the synthetic report has
   that comparison and this one does not.
+- **The CGMacros observation mask is an estimate, not the physical mask.** The
+  published files are interpolated onto a one-minute grid and the sampling mask is
+  not recoverable from them. This run used the `slope-change` policy, which drops
+  4.85% of on-lattice Dexcom and 2.84% of Libre readings inside flat stretches —
+  preferentially where glucose is flat, in a model that reads the mask as an input
+  channel. The quantitative effect of that bias on these scores is unmeasured.
+  See [docs/datasets.md](../docs/datasets.md).
+- **The pretraining-validation partition used overlapping windows**, contrary to the
+  protocol written in `docs/implementation-decisions.md` assumption 11. The split is
+  by subject, so nothing leaks between training and validation; the cost is that
+  correlated windows shrink the effective sample size behind the validation loss and
+  the effective-rank diagnostic. The run is reported as it happened.
 
 ## What would change the answer
 
-In rough order of expected value: adding the remaining public pretraining cohorts the
-paper used (Stanford, BIG IDEAs, Colas) to test whether the gap closes with corpus
-size and diversity rather than raw hours; more seeds; and a scale sweep that
-pretrains on 25/50/75/100% of the available hours, since the question this report
-actually poses — how much does this method need? — is answered by a curve, not by a
-point.
+First settle preprocessing, so that later runs are comparable: the mask policy and
+the missing-input policy are now explicit and documented, and should not move again.
+
+Then the cheapest informative experiment is **the no-dynamics ablation** — full
+training against `--dynamics-weight 0` on the same saved subject partitions, the same
+random controls and a predeclared epoch-120 rule. It asks whether the temporal
+objective earns its place before any larger run is paid for.
+
+A data-size sweep is worth running only in controlled form: hold the evaluation
+participants fixed and vary pretraining hours alone, since changing population and
+hours together — as this run does — cannot isolate a scale effect.
+
+One caution about these particular numbers. They have now been used to characterise
+the implementation. Repeatedly tuning against them would turn CGMacros from a held-out
+test into development data; a future headline claim should be made on a cohort that
+has not been looked at this many times.
 
 ## Reproducing
 
