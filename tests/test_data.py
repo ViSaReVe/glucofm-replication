@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 import torch
 
-from glucofm.augment import augment
+from glucofm.augment import augment, compression_profile
 from glucofm.data import WindowSet, align_window, assert_subject_disjoint, from_csv, synthetic_windows
 from glucofm.evaluate import probe, subject_splits, summary_features
 
@@ -86,3 +86,29 @@ def test_probe_shares_splits_and_reports_all_metrics():
     assert result["summary"]["a"] == result["summary"]["b"]
     assert len(result["subject_splits"]) == 3
     assert set(result["summary"]["a"]) == {"average_precision", "roc_auc", "macro_f1"}
+
+
+def test_compression_reaches_its_sampled_bottom_at_every_length():
+    # linspace(-1, 1, L).abs() has no exact zero for even L, so an unrenormalised
+    # envelope stopped at 0.52 / 0.4857 / 0.4667 / 0.4545 for L = 6 / 8 / 10 / 12.
+    bottom = 0.40
+    for length in range(6, 13):
+        profile = compression_profile(length, bottom)
+        assert profile.shape == (length,)
+        assert abs(profile.min().item() - bottom) < 1e-6
+        assert abs(profile.max().item() - 1.0) < 1e-6
+
+
+def test_compression_leaves_the_already_correct_odd_lengths_unchanged():
+    # Odd lengths already contained an exact zero; the renormalisation must be a
+    # no-op there, so the fix cannot be masking a change to the correct case.
+    for length in (7, 9, 11):
+        old = 0.55 + 0.45 * torch.linspace(-1, 1, length).abs()
+        torch.testing.assert_close(compression_profile(length, 0.55), old)
+
+
+def test_compression_envelope_is_a_symmetric_v_anchored_at_one():
+    profile = compression_profile(8, 0.4)
+    torch.testing.assert_close(profile, profile.flip(0))
+    assert profile[0] == profile[-1] == 1.0
+    assert profile.argmin().item() in (3, 4)
