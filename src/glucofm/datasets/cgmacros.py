@@ -242,28 +242,38 @@ def sensor_readings(values, minutes=None, period=None, policy="slope-change") ->
 
     - a point where the series changes slope is a real reading;
     - the first and last present point of a run are real readings;
-    - a point off the sampling lattice is interpolated;
-    - a point on the lattice, present, and collinear with its neighbours is
-      **ambiguous** -- a plateau reading and an interpolated point look the same.
+    - a point off the sampling lattice was not reported by the sensor.
 
-    The two policies differ only in how they resolve that ambiguity.
+    Everything else is ambiguous. A point on the lattice, present, and collinear
+    with its neighbours may be a real reading or an interpolated filler, and the
+    file does not say which. Both policies therefore select *candidates*; neither
+    partitions points into readings and non-readings.
 
-    `"slope-change"` (default) keeps only the provably-real points. It never admits
-    an interpolated value, and it discards real readings inside flat stretches:
-    measured over the published cohort it drops 4.85% of on-lattice Dexcom points
-    and 2.84% of Libre points as plateaus, plus 0.81% and 0.66% collinear with a
-    non-zero slope. This under-counts the mask, and does so preferentially where
-    glucose is flat, so missingness becomes mildly correlated with the signal.
+    `"slope-change"` (default) keeps only the provably-real points and excludes
+    every ambiguous candidate. It never admits an interpolated value. It certainly
+    discards some real readings -- a plateau produces no slope change -- but how
+    many is not identifiable from these files. Its exclusions are concentrated where
+    the series is flat, so whatever the true rate, the loss is signal-dependent:
+    missingness becomes correlated with glucose being flat, in a model that reads
+    the mask as an input channel. `docs/datasets.md` gives the measured counts of
+    excluded candidates by category.
 
-    `"lattice"` needs `minutes` (minute-of-day per row) and `period`. It keeps
-    on-lattice present points except those strictly inside a *sloped* interpolated
-    segment, recovering plateau readings. Where it admits an unsampled point the
-    bracketing readings were equal, so the value it admits is the value a real
-    reading would have carried; the cost is an over-counted mask across flat
-    dropouts rather than a wrong number.
+    `"lattice"` needs `minutes` (minute-of-day per row) and `period`. It additionally
+    admits an ambiguous candidate when the two bracketing readings are equal. Note
+    what that does and does not buy: the admitted value equals its neighbours, but
+    equal endpoints do not establish what an unobserved measurement between them
+    would have been -- an excursion and return within one sampling interval is
+    possible. The admitted number is an interpolated estimate, not a recovered
+    measurement.
 
-    The recorded real-data experiment used `"slope-change"`, which is why it remains
-    the default. See `docs/datasets.md`; changing it changes the prepared datasets.
+    Neither policy's true mask error rate is known. The recorded real-data
+    experiment used `"slope-change"`, which is why it remains the default. See
+    `docs/datasets.md`; changing it changes the prepared datasets.
+
+    Phase inference needs at least three anchors. With fewer -- a wholly flat trace,
+    say -- `"lattice"` cannot locate the sampling lattice and falls back to the
+    `"slope-change"` result rather than guessing a phase, so plateau candidates are
+    not admitted in that case.
     """
     if policy not in RECOVERY_POLICIES:
         raise ValueError(f"Unknown recovery policy {policy!r}; choose from {RECOVERY_POLICIES}")
@@ -280,6 +290,7 @@ def sensor_readings(values, minutes=None, period=None, policy="slope-change") ->
         raise ValueError("minutes must align with values")
     index = np.flatnonzero(anchors)
     if len(index) < 3:
+        # Too few anchors to infer the lattice phase; fall back rather than guess.
         return anchors
     phase = np.bincount(minutes[index] % period).argmax()
     on_lattice = np.isfinite(values) & (minutes % period == phase)

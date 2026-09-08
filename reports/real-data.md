@@ -267,10 +267,13 @@ is a gap in the instrumentation, not a measurement.
   that comparison and this one does not.
 - **The CGMacros observation mask is an estimate, not the physical mask.** The
   published files are interpolated onto a one-minute grid and the sampling mask is
-  not recoverable from them. This run used the `slope-change` policy, which drops
-  4.85% of on-lattice Dexcom and 2.84% of Libre readings inside flat stretches —
-  preferentially where glucose is flat, in a model that reads the mask as an input
-  channel. The quantitative effect of that bias on these scores is unmeasured.
+  not recoverable from them. This run used the `slope-change` policy, which excludes
+  every ambiguous candidate: 4.85% of on-lattice Dexcom and 2.84% of Libre points
+  are excluded with equal bracketing readings. How many of those were real readings
+  is not identifiable from the files, so the policy's error rate against the physical
+  mask is unknown. What is clear is the shape of the bias — exclusions concentrate
+  where the series is flat, in a model that reads the mask as an input channel — and
+  its effect on these scores is unmeasured.
   See [docs/datasets.md](../docs/datasets.md).
 - **The pretraining-validation partition used overlapping windows**, contrary to the
   protocol written in `docs/implementation-decisions.md` assumption 11. The split is

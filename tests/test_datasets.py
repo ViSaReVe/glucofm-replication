@@ -115,6 +115,23 @@ def test_recovery_of_a_collinear_reading_is_undecidable_by_construction():
     assert cgmacros.sensor_readings(real)[5] == cgmacros.sensor_readings(dropout)[5]
 
 
+def test_lattice_policy_falls_back_when_the_phase_cannot_be_inferred():
+    # A wholly flat trace yields only two anchors (its run endpoints), which is too
+    # few to locate the sampling lattice. The policy must fall back, not guess a
+    # phase -- so it does NOT recover this plateau, and must not claim to.
+    flat = np.full(31, 120.0)
+    minutes = np.arange(31)
+    assert np.flatnonzero(cgmacros.sensor_readings(flat)).tolist() == [0, 30]
+    assert np.flatnonzero(
+        cgmacros.sensor_readings(flat, minutes, 5, policy="lattice")).tolist() == [0, 30]
+    # One later slope change supplies a third anchor, and the plateau is recovered.
+    bumped = flat.copy()
+    bumped[20:] = np.linspace(120.0, 140.0, 11)
+    assert np.flatnonzero(
+        cgmacros.sensor_readings(bumped, minutes, 5, policy="lattice")).tolist() == [
+            0, 5, 10, 15, 20, 30]
+
+
 def test_lattice_policy_needs_its_lattice_and_rejects_unknown_policies():
     values = interpolate({0: 100.0, 5: 110.0}, 6)
     with pytest.raises(ValueError, match="needs minutes and period"):

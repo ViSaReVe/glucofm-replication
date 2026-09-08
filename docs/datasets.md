@@ -66,40 +66,61 @@ What the published file *does* decide:
 |---|---|
 | The series changes slope at the point | real reading |
 | First or last present point of a run | real reading |
-| Point off the sampling lattice | interpolated |
+| Point off the sampling lattice | not reported by the sensor |
 | On-lattice, present, collinear with its neighbours | **ambiguous** |
 
-The policies differ only in how they resolve the ambiguous case. `--recovery`
-selects one.
+The ambiguous case is genuinely undecidable, and it is where the policies differ.
+`--recovery` selects one. Both select *candidate* points; **neither partitions the
+series into readings and non-readings, and neither yields a true mask error rate.**
 
-**`slope-change` (default).** Keeps only the provably-real points. It never admits
-an interpolated value. It also discards real readings inside flat stretches, because
-a plateau produces no slope change — measured over the whole published cohort:
+**`slope-change` (default).** Keeps only the provably-real points and excludes every
+ambiguous candidate. It never admits an interpolated value.
 
-| | on-lattice present points | dropped as plateau | dropped, collinear with slope | correctly excluded as dropout interpolation |
+The counts below are **excluded on-lattice candidates, classified by the geometry of
+the published series** — not by known sampling status. How many were real readings is
+not identifiable from these files.
+
+| | on-lattice present points | excluded, bracketing readings equal | excluded, spanned by a sloped straight segment longer than one sampling period | excluded, other |
 |---|---:|---:|---:|---:|
-| Dexcom | 126,025 | 6,115 (4.85%) | 1,019 (0.81%) | 14,989 (11.89%) |
-| Libre | 45,894 | 1,304 (2.84%) | 304 (0.66%) | 3,139 (6.84%) |
+| Dexcom | 126,025 | 6,115 (4.85%) | 14,989 (11.89%) | 1,019 (0.81%) |
+| Libre | 45,894 | 1,304 (2.84%) | 3,139 (6.84%) | 304 (0.66%) |
 
-So this policy under-counts the mask by roughly 5.7% of Dexcom and 3.5% of Libre
-on-lattice readings, and it does so **preferentially where glucose is flat**. That is
-a real bias: it makes missingness mildly correlated with the signal, in a model that
-reads the mask as an input channel. An earlier version of this document claimed the
-loss was "about 0.1% of Libre readings"; that figure was wrong — it came from one
-subject and conflated the plateau and dropout cases.
+The middle column is *consistent with* interpolation across a sensor dropout, but
+does not prove it: a run of real readings that happen to lie on a line produces the
+same geometry. The first column is *consistent with* a plateau of real readings, and
+equally does not prove one.
 
-**`lattice`.** Keeps on-lattice present points except those strictly inside a
-*sloped* interpolated segment, recovering plateau readings. Where it admits a point
-the sensor may not have sampled, the bracketing readings were equal, so the value it
-admits is the value a real reading would have carried; the cost is an over-counted
-mask across flat dropouts rather than a wrong number. It yields 5.8% more Dexcom and
-3.1% more Libre readings than the default.
+What the numbers do establish is the **shape** of the bias, which does not depend on
+resolving the ambiguity: exclusions concentrate where the series is flat. So whatever
+the true rate, the loss is signal-dependent — missingness becomes correlated with
+glucose being flat, in a model that reads the mask as an input channel. That is a
+real defect of the default policy, and its magnitude is unquantified.
+
+An earlier version of this document put the loss at "about 0.1% of Libre readings",
+called the middle column "correctly excluded as dropout interpolation", and stated an
+exact mask undercount. All three were wrong: the first came from one subject, and the
+others asserted a distinction the same paragraph had just called unidentifiable.
+
+**`lattice`.** Additionally admits an ambiguous candidate when the two bracketing
+readings are equal, which yields 5.8% more Dexcom and 3.1% more Libre candidate
+points than the default. Note precisely what that buys: the admitted value equals its
+neighbours, but **equal endpoints do not establish what an unobserved measurement
+between them would have been** — an excursion and return inside one sampling interval
+is possible. The admitted number is an interpolated estimate, not a recovered
+measurement, and admitting it over-counts the mask wherever the sensor did not in
+fact sample there.
+
+Phase inference needs at least three anchors. A wholly flat trace yields only its two
+run endpoints, so `lattice` cannot locate the sampling lattice and falls back to the
+`slope-change` result rather than guessing a phase; plateau candidates are not
+admitted in that case. It does not recover all plateaus.
 
 **The recorded experiment used `slope-change`**, which is why it is the default:
 changing it changes the prepared datasets and would require regenerating
-[the real-data results](../reports/real-data.md). Neither policy is
-correct in the sense of recovering ground truth; the bias of each is stated above so
-that a reader can judge it. `reports/real-data.md` records the policy in force.
+[the real-data results](../reports/real-data.md). Neither policy recovers ground
+truth, and neither one's error rate against the physical mask is identified by these
+files. What is stated above is what each policy selects and how its exclusions are
+distributed. `reports/real-data.md` records the policy in force.
 
 Yields under the default: 105,895 Dexcom readings and 41,510 Libre readings, from
 629,825 and 687,360 interpolated one-minute points respectively.
