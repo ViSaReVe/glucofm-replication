@@ -2,6 +2,14 @@
 
 Run date: 2026-09-07. This is a software and evaluation-pipeline demonstration using generated regimes. It is not a clinical experiment or a reproduction of the GlucoFM benchmark.
 
+> **This page is the record of that run, not a statement of current behaviour.** The
+> measurements below were produced before the compression-envelope, window-sampling,
+> mask-channel and checkpoint-selection changes recorded in
+> `docs/implementation-decisions.md`. Every number in the tables and in the JSON
+> artifacts belongs to the 2026-09-07 run and is left untouched; where the current code
+> differs, that is stated inline. The demo has not been re-run since, so there are no
+> measured current metrics to report here.
+
 ## Protocol
 
 ```bash
@@ -36,7 +44,9 @@ The purpose of preserving this table is to distinguish a functioning training pi
 
 The full model's average training loss decreased from 0.5224 to 0.1830, and its validation loss from 0.4189 to 0.1612. The learned Gaussian bandwidth changed from six grid steps at initialization to approximately 5.869 at epoch 10. Loss values cannot be compared directly against the ablation's totals because the objectives differ.
 
-This implementation has **638,466 trainable parameters** and **1,077,636 total pretraining parameters**, versus the paper's reported 0.72M and 1.18M. The difference reflects the explicitly documented low-level architectural assumptions. It is not claimed to be an exact parameter-for-parameter replica.
+The model in this run had **638,466 trainable parameters** and **1,077,636 total pretraining parameters**.
+
+Since this run, the patch convolution takes the observation mask as a second input channel, which adds 3 x (64 + 16 + 48 + 48) = 528 weights per encoder. The **current architecture measures 638,994 trainable and 1,078,692 total parameters** (+528 trainable, +1,056 total, the latter counting the EMA target copy), versus the paper's reported 0.72M and 1.18M. The difference from the paper reflects the explicitly documented low-level architectural assumptions. It is not claimed to be an exact parameter-for-parameter replica.
 
 The full and ablation training loops took approximately 6.14 and 6.04 seconds, respectively, on the recorded local CPU runtime with two PyTorch intra-op threads. These times include the small training/validation/checkpoint loops but exclude Python startup, dataset generation and downstream probe evaluation. They are not hardware benchmarks or estimates of the paper's training cost.
 
@@ -44,7 +54,7 @@ Runtime: Python 3.12.4, PyTorch 2.14.0, NumPy 2.5.3, macOS 26.6.2 on arm64. Exac
 
 ## Verification
 
-All **25 tests passed** on CPU. Tests exercise mask and hidden-input isolation, causal filtering with fixed normalized input, rate-of-change gaps, weighted targets, gradients through both streams and fusion, EMA freezing/update behavior, subject separation, and a train/save/reload/feature-extraction round trip.
+All **25 tests passed** on CPU at the time of this run; the suite has since grown to 35. Tests exercise mask and hidden-input isolation, causal filtering with fixed normalized input, rate-of-change gaps, weighted targets, gradients through both streams and fusion, EMA freezing/update behavior, subject separation, and a train/save/reload/feature-extraction round trip.
 
 The standalone `glucofm probe` command also loaded the saved best checkpoint and reproduced the demo's three non-ablation metric summaries exactly. Python compilation and command help were checked. The included GitHub Actions workflow has not run on GitHub yet.
 

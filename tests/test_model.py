@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from glucofm.model import (
-    CausalGaussian, GlucoFMEncoder, GlucoFMPretrainer, ModelConfig,
+    CausalGaussian, GlucoFMEncoder, GlucoFMPretrainer, ModelConfig, WaveFeature,
     masked_moments, rate_of_change, sample_hidden, transition_weights, weighted_smooth_l1,
 )
 
@@ -188,3 +188,59 @@ def test_reject_empty_physical_window_but_handle_empty_patches():
 def test_mask_counts_match_documented_flooring():
     hidden = sample_hidden(100, torch.device("cpu"))
     assert set(hidden.sum(1).tolist()) <= {12, 13, 14}
+
+
+def gap_pair():
+    """Two patches with identical zero-filled values but gaps in different places.
+
+    Both hold the constant 2.0 with a 0.0 at positions 3 and 5; patch A observes the
+    0.0 at 5 and is missing at 3, patch B is the other way round. The zero-filled
+    value arrays are therefore bit-identical, and because both zeros sit in an
+    identical (2, 0, 2) neighbourhood the kernel response at 3 equals the response at
+    5, so the masked mean coincides too: under a values-only convolution these two
+    patches are indistinguishable.
+    """
+    values = torch.full((1, 1, 12), 2.0)
+    values[0, 0, 3] = 0.0
+    values[0, 0, 5] = 0.0
+    first = torch.ones(1, 1, 12, dtype=torch.bool)
+    first[0, 0, 3] = False
+    second = torch.ones(1, 1, 12, dtype=torch.bool)
+    second[0, 0, 5] = False
+    return values, first, second
+
+
+def test_zero_filling_alone_cannot_separate_a_gap_from_a_mid_range_reading():
+    # The premise of the mask channel: on this pair a values-only Conv1d + GELU +
+    # masked mean pooling returns exactly the same features for both patches.
+    values, first, second = gap_pair()
+    conv = torch.nn.Conv1d(1, 6, kernel_size=3, padding=1)
+
+    def values_only(x, valid):
+        weights = valid.to(x.dtype)
+        features = torch.nn.functional.gelu(conv(torch.where(valid, x, 0.0)))
+        return (features * weights).sum(-1) / weights.sum(-1).clamp_min(1)
+
+    # Equal to float32 summation rounding: the two are the same feature vector.
+    torch.testing.assert_close(values_only(values, first), values_only(values, second),
+                               rtol=0, atol=1e-6)
+
+
+def test_mask_channel_makes_missing_positions_identifiable():
+    values, first, second = gap_pair()
+    feature = WaveFeature(6).eval()
+    with torch.no_grad():
+        a, b = feature(values, first), feature(values, second)
+    assert (a - b).abs().max() > 1e-3
+
+
+def test_encoder_separates_windows_that_differ_only_in_where_readings_are_missing():
+    encoder = GlucoFMEncoder(ModelConfig(dropout=0)).eval()
+    glucose = torch.full((2, 288), 110.0)
+    observed = torch.ones(2, 288, dtype=torch.bool)
+    observed[0, 30] = False
+    observed[1, 90] = False
+    start = torch.zeros(2, dtype=torch.long)
+    with torch.no_grad():
+        out = encoder(glucose, observed, start)["embedding"]
+    assert not torch.allclose(out[0], out[1])
